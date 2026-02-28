@@ -21,7 +21,7 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="relative h-screen flex items-center justify-center overflow-hidden">
+      <div className="relative h-[100dvh] flex items-center justify-center overflow-hidden">
         <Image
           alt="Mountains background"
           src="/backgroundimage.jpg"
@@ -49,7 +49,7 @@ export default function Home() {
   }
 
   return (
-    <div className="relative h-screen flex flex-col overflow-hidden">
+    <div className="relative h-[100dvh] pt-[64px] flex flex-col overflow-hidden">
       <Image
         alt="Mountains background"
         src="/backgroundimage.jpg"
@@ -64,7 +64,7 @@ export default function Home() {
 
       <Navbar />
       
-      <main className="flex flex-1 overflow-hidden mt-[64px]">
+      <main className="flex flex-1 overflow-hidden">
         {/* Sidebar/Chats list */}
         <div className={`w-full md:w-[350px] border-r border-gray-200/20 dark:border-gray-800/50 backdrop-blur-sm bg-white/80 dark:bg-gray-950/90 transition-colors duration-200 ${selectedUser ? "hidden md:flex" : "flex"}`}>
           <Content 

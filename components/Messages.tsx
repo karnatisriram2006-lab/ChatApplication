@@ -231,7 +231,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
     };
 
     return (
-        <div className="w-full flex flex-col justify-between h-[calc(100vh-64px)] overflow-hidden">
+        <div className="w-full flex flex-col justify-between flex-1 h-full min-h-0 overflow-hidden">
             {lightboxUrl && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fadeIn" onClick={() => setLightboxUrl(null)}>
                     <button className="absolute top-4 right-5 text-white/70 hover:text-white text-3xl font-light z-10 leading-none" onClick={() => setLightboxUrl(null)} title="Close">✕</button>
@@ -333,7 +333,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
                             <div ref={messagesEndRef} />
                         </section>
 
-                        <section className="p-4 bg-white/50 dark:bg-gray-950/50 backdrop-blur-md border-t border-gray-100 dark:border-gray-800">
+                        <section className="p-4 pb-6 md:pb-4 bg-white/50 dark:bg-gray-950/50 backdrop-blur-md border-t border-gray-100 dark:border-gray-800">
                             {showEmojiPicker && (
                                 <div ref={emojiRef} className="absolute bottom-20 left-4 z-50 animate-fadeIn">
                                     <EmojiPicker onEmojiClick={onEmojiClick} theme={isDark ? Theme.DARK : Theme.LIGHT} height={350} width={300} />
