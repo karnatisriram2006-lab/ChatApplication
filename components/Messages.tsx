@@ -6,6 +6,7 @@ import { Smile } from "lucide-react";
 import Image from "next/image";
 import { useEffect } from "react";
 import { db } from "@/lib/firebase";
+import { useChatStore } from "@/store/useChatStore";
 import { 
     collection, 
     addDoc, 
@@ -19,8 +20,11 @@ import {
     writeBatch,
     getDocs,
     serverTimestamp,
-    Timestamp 
+    Timestamp,
+    limit
 } from "firebase/firestore";
+import { rtdb } from "@/lib/firebase";
+import { ref, onValue, set, onDisconnect } from "firebase/database";
 
 interface Message {
     id?: string;
@@ -36,11 +40,10 @@ interface Message {
 
 interface MessagesProps {
     currentUser: string;
-    selectedUser: string;
-    onBack?: () => void;
 }
 
-const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
+const Messages = ({ currentUser }: MessagesProps) => {
+    const { selectedUser, setSelectedUser } = useChatStore();
     const [currentMessage, setCurrentMessage] = useState("");
     const [messageList, setMessageList] = useState<Message[]>([]);
     const [requestStatus, setRequestStatus] = useState<string | null>(null);
@@ -57,6 +60,8 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
     const emojiRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const isTypingRef = useRef(false);
+    const [msgLimit, setMsgLimit] = useState(50);
     const [isDark, setIsDark] = useState(false);
 
     useEffect(() => {
@@ -72,7 +77,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
         return () => observer.disconnect();
     }, []);
    
-    const roomId = [currentUser, selectedUser].sort().join("_");
+    const roomId = [currentUser, selectedUser!].sort().join("_");
     const requestId = roomId;
 
     useEffect(() => {
@@ -91,21 +96,35 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
             }
         });
 
+        const presenceRef = ref(rtdb, `presence/${selectedUser}`);
+        const presenceUnsubscribe = onValue(presenceRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                setFriendProfile(prev => prev ? {
+                    ...prev,
+                    status: data.status || "Offline",
+                    lastSeen: data.lastSeen ? { toDate: () => new Date(data.lastSeen) } : prev.lastSeen
+                } : null);
+            }
+        });
+
+        const typingRef = ref(rtdb, `typing/${roomId}/${selectedUser}`);
+        const typingUnsubscribe = onValue(typingRef, (snapshot) => {
+            setFriendTyping(!!snapshot.val());
+        });
+
         const requestUnsubscribe = onSnapshot(doc(db, "chatRequests", requestId), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setRequestStatus(data.status);
                 setRequestSender(data.from);
-                if (data[`typing_${selectedUser}`]) setFriendTyping(true);
-                else setFriendTyping(false);
             } else {
                 setRequestStatus(null);
                 setRequestSender(null);
-                setFriendTyping(false);
             }
         });
 
-        const q = query(collection(db, "messages"), where("roomId", "==", roomId), orderBy("timestamp", "asc"));
+        const q = query(collection(db, "messages"), where("roomId", "==", roomId), orderBy("timestamp", "desc"), limit(msgLimit));
         const messageUnsubscribe = onSnapshot(q, (snapshot) => {
             const messages: Message[] = [];
             const unreadBatch = writeBatch(db);
@@ -113,7 +132,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
 
             snapshot.forEach((docSnap) => {
                 const msgData = docSnap.data();
-                messages.push({ id: docSnap.id, ...msgData } as Message);
+                messages.unshift({ id: docSnap.id, ...msgData } as Message);
 
                 if (msgData.author !== currentUser && !msgData.read) {
                     unreadBatch.update(doc(db, "messages", docSnap.id), { read: true });
@@ -132,18 +151,28 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
         
         return () => {
             userUnsubscribe();
+            presenceUnsubscribe();
+            typingUnsubscribe();
             requestUnsubscribe();
             messageUnsubscribe();
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
-    }, [roomId, currentUser, selectedUser, requestId]);
+    }, [roomId, currentUser, selectedUser, requestId, msgLimit]);
 
     const handleTyping = () => {
         if (requestStatus !== "accepted") return;
-        setDoc(doc(db, "chatRequests", requestId), { [`typing_${currentUser}`]: true }, { merge: true });
+        const myTypingRef = ref(rtdb, `typing/${roomId}/${currentUser}`);
+        
+        if (!isTypingRef.current) {
+            isTypingRef.current = true;
+            set(myTypingRef, true);
+            onDisconnect(myTypingRef).remove();
+        }
+        
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => {
-            setDoc(doc(db, "chatRequests", requestId), { [`typing_${currentUser}`]: false }, { merge: true });
+            isTypingRef.current = false;
+            set(myTypingRef, false);
         }, 2000);
     };
 
@@ -157,7 +186,16 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
     }, []);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messageList]);
+    const previousMessageCount = useRef(0);
+    useEffect(() => { 
+        // Only auto-scroll to bottom if we are on the first load, OR if a brand new message just came in.
+        // If we "Loaded More", the array length jumped by > 1, so don't auto-scroll.
+        const msgDiff = messageList.length - previousMessageCount.current;
+        if (msgDiff <= 1) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+        previousMessageCount.current = messageList.length;
+    }, [messageList]);
 
     const sendRequest = async () => {
         setIsActionLoading(true);
@@ -189,25 +227,46 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || requestStatus !== "accepted") return;
-        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-        const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-        if (!cloudName || !uploadPreset) {
-            alert("Image upload is currently unavailable due to missing server configuration.");
-            return;
-        }
+        
         setIsUploading(true);
         try {
+            // 1. Fetch secure signature from Next.js server
+            const signRes = await fetch('/api/upload/sign');
+            if (!signRes.ok) throw new Error("Could not acquire secure upload signature from server");
+            const { signature, timestamp, apiKey, cloudName } = await signRes.json();
+            
+            if (!cloudName || !apiKey) {
+                alert("Server misconfigured: Missing Cloudinary credentials.");
+                return setIsUploading(false);
+            }
+
+            // 2. Perform signed multipart upload directly to Cloudinary edge network
             const formData = new FormData();
-            formData.append("file", file); formData.append("upload_preset", uploadPreset);
-            const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: formData });
-            if (!uploadRes.ok) throw new Error("Cloudinary upload failed");
+            formData.append("file", file);
+            formData.append("api_key", apiKey);
+            formData.append("timestamp", timestamp.toString());
+            formData.append("signature", signature);
+
+            const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { 
+                method: "POST", 
+                body: formData 
+            });
+            
+            if (!uploadRes.ok) throw new Error("Cloudinary secure upload failed");
             const cloudinaryData = await uploadRes.json();
+            
+            // 3. Save the image to the database
             const messageData = {
                 roomId: roomId, author: currentUser, message: "Photo", imageUrl: cloudinaryData.secure_url,
                 time: new Date(Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), timestamp: serverTimestamp(),
             };
             await addDoc(collection(db, "messages"), messageData);
-        } catch (error) { console.error("Error uploading image: ", error); } finally { setIsUploading(false); }
+        } catch (error) { 
+            console.error("Error uploading secure image: ", error); 
+            alert("Failed to upload image. Please try again.");
+        } finally { 
+            setIsUploading(false); 
+        }
     };
 
     const handleReaction = async (messageId: string, emoji: string) => {
@@ -243,11 +302,9 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
             )}
             
             <section className="h-16 w-full bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 flex items-center px-4 sticky top-0 z-10 shadow-sm gap-2">
-                {onBack && (
-                    <button onClick={onBack} className="md:hidden p-2 -ml-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                        <Image src="/chevron-left.svg" alt="Back" width={24} height={24} className="dark:invert" />
-                    </button>
-                )}
+                <button onClick={() => setSelectedUser(null)} className="md:hidden p-2 -ml-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+                    <Image src="/chevron-left.svg" alt="Back" width={24} height={24} className="dark:invert" />
+                </button>
                 <div className="flex items-center gap-3">
                     <Image src={friendProfile?.avatar || "/user-fill.svg"} alt={friendProfile?.name || "User Profile"} width={45} height={45} className="rounded-full shadow-sm bg-white dark:bg-gray-900" />
                     <div className="flex flex-col">
@@ -298,6 +355,16 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
                                 <div className="flex-1 flex flex-col items-center justify-center opacity-20 pointer-events-none">
                                     <Image src="/message-2-fill.svg" alt="No messages" width={100} height={100} className="dark:invert" />
                                     <p className="mt-4 text-sm font-medium dark:text-gray-200">Say hi to {friendProfile?.name}!</p>
+                                </div>
+                            )}
+                            {messageList.length >= msgLimit && (
+                                <div className="flex justify-center mb-4">
+                                    <button 
+                                        onClick={() => setMsgLimit(prev => prev + 50)} 
+                                        className="text-xs font-semibold px-4 py-2 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-gray-700 rounded-full shadow-sm hover:scale-105 transition-transform"
+                                    >
+                                        Load older messages
+                                    </button>
                                 </div>
                             )}
                             {messageList.map((msg, index) => (

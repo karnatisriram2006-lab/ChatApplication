@@ -1,6 +1,10 @@
 import Image from "next/image";
+import { useEffect, useState } from "react";
+import { rtdb } from "@/lib/firebase";
+import { ref, onValue } from "firebase/database";
 
 interface ChatsProps {
+    userId: string;
     name: string;
     status: string;
     time: string;
@@ -10,7 +14,22 @@ interface ChatsProps {
     onClick: () => void;
 }
 
-const Chats = ({ name, status, time, avatar, isActive, unreadCount = 0, onClick }: ChatsProps) => {
+const Chats = ({ userId, name, status, time, avatar, isActive, unreadCount = 0, onClick }: ChatsProps) => {
+    const [internalStatus, setInternalStatus] = useState(status);
+
+    useEffect(() => {
+        if (!userId) return;
+        const presenceRef = ref(rtdb, `presence/${userId}`);
+        const unsubscribe = onValue(presenceRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data?.status) {
+                setInternalStatus(data.status);
+            }
+        });
+        return () => unsubscribe();
+    }, [userId]);
+
+    const displayStatus = internalStatus || status;
     return (
         <section
             onClick={onClick}
@@ -31,14 +50,14 @@ const Chats = ({ name, status, time, avatar, isActive, unreadCount = 0, onClick 
                             className="rounded-full bg-white dark:bg-gray-900 object-cover"
                         />
                     </div>
-                    {status === "Online" && (
+                    {displayStatus === "Online" && (
                         <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-white dark:border-gray-900 rounded-full shadow-sm" />
                     )}
                 </div>
                 <div className="flex flex-col min-w-0">
                     <p className={`font-semibold text-[13px] tracking-tight truncate ${isActive ? "text-blue-700 dark:text-blue-400" : "text-gray-800 dark:text-gray-200"}`}>{name}</p>
-                    <p className={`text-[11px] leading-tight font-medium ${status === "Online" ? "text-emerald-500 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>
-                        {status === "Online" ? "🟢 Online" : "⚫ Offline"}
+                    <p className={`text-[11px] leading-tight font-medium ${displayStatus === "Online" ? "text-emerald-500 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>
+                        {displayStatus === "Online" ? "🟢 Online" : "⚫ Offline"}
                     </p>
                 </div>
             </div>

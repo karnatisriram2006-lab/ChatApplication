@@ -1,12 +1,11 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
 import Chats from "./Chats";
+import { useChatStore } from "@/store/useChatStore";
 
 interface ContentProps {
-    onSelectUser: (name: string) => void;
-    selectedUser: string | null;
     currentUser: string;
 }
 
@@ -18,31 +17,45 @@ interface User {
     avatar: string;
 }
 
-const Content = ({ onSelectUser, selectedUser, currentUser }: ContentProps) => {
+const Content = ({ currentUser }: ContentProps) => {
     const [users, setUsers] = useState<User[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const { selectedUser, setSelectedUser } = useChatStore();
 
     useEffect(() => {
-        // Limit query to 50 users to prevent performance issues at scale
-        const q = query(collection(db, "users"), orderBy("name", "asc"), limit(50));
+        let q;
+        if (searchQuery.trim() === "") {
+            q = query(collection(db, "users"), orderBy("name", "asc"), limit(50));
+        } else {
+            // Search against nameLowercase for true case-insensitive prefix matching.
+            // e.g. typing "ali" will find "Ali", "alice", "ALICE", etc.
+            const queryLower = searchQuery.toLowerCase();
+            q = query(collection(db, "users"), 
+                where("nameLowercase", ">=", queryLower), 
+                where("nameLowercase", "<=", queryLower + "\uf8ff"), 
+                limit(50)
+            );
+        }
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const usersData: User[] = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                usersData.push({
-                    uid: doc.id,
-                    name: data.name,
-                    status: data.status,
-                    avatar: data.avatar,
-                    lastSeen: data.lastSeen
-                } as User);
+                if (doc.id !== currentUser) {
+                    usersData.push({
+                        uid: doc.id,
+                        name: data.name,
+                        status: data.status,
+                        avatar: data.avatar,
+                        lastSeen: data.lastSeen
+                    } as User);
+                }
             });
             setUsers(usersData);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [searchQuery, currentUser]);
 
     return (
         <aside className="h-full w-full bg-white dark:bg-gray-950 flex flex-col">
@@ -62,17 +75,16 @@ const Content = ({ onSelectUser, selectedUser, currentUser }: ContentProps) => {
             </div>
             
             <div className="w-full flex-1 overflow-y-auto">
-                {users
-                    .filter(u => u.uid !== currentUser && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                    .map((user) => (
+                {users.map((user) => (
                     <Chats 
                         key={user.uid}
+                        userId={user.uid}
                         name={user.name}
                         status={user.status}
                         time="Active"
                         avatar={user.avatar}
                         isActive={selectedUser === user.uid}
-                        onClick={() => onSelectUser(user.uid)}
+                        onClick={() => setSelectedUser(user.uid)}
                     />
                 ))}
             </div>

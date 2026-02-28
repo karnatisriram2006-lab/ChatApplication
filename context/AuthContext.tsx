@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { usePresence } from "@/hooks/usePresence";
 
 interface AuthContextType {
     user: User | null;
@@ -23,6 +24,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // Track real-time Online/Offline presence via RTDB (free, accurate, tab-close safe)
+    usePresence(user?.uid ?? undefined);
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -30,6 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await setDoc(doc(db, "users", user.uid), {
                     uid: user.uid,
                     name: user.displayName,
+                    nameLowercase: user.displayName?.toLowerCase() ?? "",
                     email: user.email,
                     avatar: user.photoURL || "/user-fill.svg",
                     lastSeen: serverTimestamp(),

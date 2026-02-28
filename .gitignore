@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Firebase Admin Service Account Key - NEVER commit this to git!
+# It grants full admin access to your Firebase project.
+serviceAccountKey.json
+scripts/serviceAccountKey.json
+**/serviceAccountKey*.json

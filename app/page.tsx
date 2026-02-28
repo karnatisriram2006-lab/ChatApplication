@@ -6,10 +6,11 @@ import Navbar from "@/components/Navbar";
 import Content from "@/components/Content";
 import Messages from "@/components/Messages";
 import { useAuth } from "@/context/AuthContext";
+import { useChatStore } from "@/store/useChatStore";
 
 export default function Home() {
   const { user, loading, loginWithGoogle } = useAuth();
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const { selectedUser, setSelectedUser } = useChatStore();
 
   if (loading) {
     return (
@@ -67,21 +68,13 @@ export default function Home() {
       <main className="absolute top-[64px] bottom-0 left-0 right-0 flex overflow-hidden">
         {/* Sidebar/Chats list */}
         <div className={`w-full md:w-[350px] border-r border-gray-200/20 dark:border-gray-800/50 backdrop-blur-sm bg-white/80 dark:bg-gray-950/90 transition-colors duration-200 ${selectedUser ? "hidden md:flex" : "flex"}`}>
-          <Content 
-            onSelectUser={setSelectedUser} 
-            selectedUser={selectedUser} 
-            currentUser={user.uid} 
-          />
+          <Content currentUser={user.uid} />
         </div>
 
         {/* Chat area */}
         <div className={`flex-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md transition-colors duration-200 ${selectedUser ? "flex" : "hidden md:flex"}`}>
           {selectedUser ? (
-            <Messages 
-                currentUser={user.uid} 
-                selectedUser={selectedUser} 
-                onBack={() => setSelectedUser(null)} 
-            />
+            <Messages currentUser={user.uid} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 gap-4">
               <div className="p-6 bg-gray-100 dark:bg-gray-800/50 rounded-full">
