@@ -1,33 +1,288 @@
-import Image from "next/image";
+"use client";
 
-const Messages = () => {
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import { 
+    collection, 
+    addDoc, 
+    query, 
+    where, 
+    orderBy, 
+    onSnapshot, 
+    doc,
+    setDoc,
+    serverTimestamp,
+    Timestamp 
+} from "firebase/firestore";
+
+interface Message {
+    id?: string;
+    roomId: string;
+    author: string;
+    message: string;
+    time: string;
+    timestamp?: Timestamp;
+}
+
+interface MessagesProps {
+    currentUser: string;
+    selectedUser: string;
+}
+
+const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
+    const [currentMessage, setCurrentMessage] = useState("");
+    const [messageList, setMessageList] = useState<Message[]>([]);
+    const [requestStatus, setRequestStatus] = useState<string | null>(null);
+    const [requestSender, setRequestSender] = useState<string | null>(null);
+    const [friendProfile, setFriendProfile] = useState<{ name: string; avatar: string } | null>(null);
+    
+    // Create a unique room ID for the conversation by sorting and joining IDs
+    const roomId = [currentUser, selectedUser].sort().join("_");
+    const requestId = roomId; // We can use the same unique ID for the request
+
+    useEffect(() => {
+        if (!currentUser || !selectedUser) return;
+
+        // Fetch friend's profile info
+        const userRef = doc(db, "users", selectedUser);
+        const userUnsubscribe = onSnapshot(userRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setFriendProfile({
+                    name: data.name || "User",
+                    avatar: data.avatar || "/sriram.jpeg"
+                });
+            }
+        });
+
+        // Listen for chat request status
+        const requestUnsubscribe = onSnapshot(doc(db, "chatRequests", requestId), (docSnap) => {
+            if (docSnap.exists()) {
+                setRequestStatus(docSnap.data().status);
+                setRequestSender(docSnap.data().from);
+            } else {
+                setRequestStatus(null);
+                setRequestSender(null);
+            }
+        });
+
+        // Query messages for the current room, ordered by timestamp
+        const q = query(
+            collection(db, "messages"),
+            where("roomId", "==", roomId),
+            orderBy("timestamp", "asc")
+        );
+
+        // Set up real-time listener for messages
+        const messageUnsubscribe = onSnapshot(q, (snapshot) => {
+            const messages: Message[] = [];
+            snapshot.forEach((doc) => {
+                messages.push({ id: doc.id, ...doc.data() } as Message);
+            });
+            setMessageList(messages);
+        });
+
+        return () => {
+            userUnsubscribe();
+            requestUnsubscribe();
+            messageUnsubscribe();
+        };
+    }, [roomId, currentUser, selectedUser, requestId]);
+
+    const sendRequest = async () => {
+        try {
+            await setDoc(doc(db, "chatRequests", requestId), {
+                from: currentUser,
+                to: selectedUser,
+                status: "pending",
+                timestamp: serverTimestamp()
+            });
+        } catch (error) {
+            console.error("Error sending request:", error);
+        }
+    };
+
+    const handleRequestAction = async (action: "accepted" | "declined") => {
+        try {
+            await setDoc(doc(db, "chatRequests", requestId), {
+                status: action
+            }, { merge: true });
+        } catch (error) {
+            console.error(`Error ${action} request:`, error);
+        }
+    };
+
+    const sendMessage = async () => {
+        if (currentMessage.trim() !== "" && requestStatus === "accepted") {
+            const messageData = {
+                roomId: roomId,
+                author: currentUser,
+                message: currentMessage.trim(),
+                time: new Date(Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: serverTimestamp(),
+            };
+
+            try {
+                setCurrentMessage(""); // Clear input early for better UX
+                await addDoc(collection(db, "messages"), messageData);
+            } catch (error) {
+                console.error("Error sending message: ", error);
+            }
+        }
+    };
+
     return (
-        <div className=" w-full flex flex-col justify-between">
-        <section className="h-12 w-full bg-white border-b border-gray-200 position-relative top-0">
-           <div className="h-12 w-full flex items-center gap-2 justify-between">
-                    <div className="flex items-center gap-2">
-                    <Image src="/sriram.jpeg" alt="User" width={40} height={40} className="rounded-full"/>
+        <div className="w-full flex flex-col justify-between h-[calc(100vh-64px)] overflow-hidden">
+            <section className="h-16 w-full bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center px-4 sticky top-0 z-10 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <Image src={friendProfile?.avatar || "/sriram.jpeg"} alt={friendProfile?.name || "User Profile"} width={45} height={45} className="rounded-full shadow-sm" />
                     <div className="flex flex-col">
-                        <p className="font-semibold">Sriram</p>
-                        <p className="text-xs">Online</p>
-                    </div>
-                    </div>
-                    <div className="flex gap-4 mr-10">
-                    <Image src="/video-on-fill.svg" alt="Video" width={20} height={20} />
-                    <Image src="/phone-fill.svg" alt="Phone" width={20} height={20} />
-                    <Image src="/search-line.svg" alt="Search" width={20} height={20} />
-                    <Image src="/more-2-fill.svg" alt="More" width={20} height={20} />
+                        <p className="font-bold text-gray-800">{friendProfile?.name || "Loading..."}</p>
+                        <p className="text-[11px] text-green-500 font-medium">
+                            {requestStatus === "accepted" ? "Active now" : "Request needed"}
+                        </p>
                     </div>
                 </div>
-        </section>
-        <section className="h-10 w-full bg-gray-100 rounded-2xl flex items-center justify-center">
-            <div className="flex items-center justify-between gap-2 w-full">
-                <Image src="/emotion-fill.svg" alt="Emoji" width={20} height={20} className="ml-5" />
-                <input type="text" placeholder="Type a message" className="px-2 bg-gray-100 border-none rounded-lg outline-none"/>
-                <Image src="/send-plane-fill.svg" alt="Send" width={20} height={20} className="mr-5" />
+                <div className="ml-auto flex gap-5 text-gray-400">
+                    <Image src="/video-on-fill.svg" alt="Video" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
+                    <Image src="/phone-fill.svg" alt="Phone" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
+                    <Image src="/search-line.svg" alt="Search" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
+                    <Image src="/more-2-fill.svg" alt="More" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
+                </div>
+            </section>
+
+            <div className="flex-1 flex flex-col overflow-hidden relative">
+                {requestStatus === "accepted" ? (
+                    <>
+                        <section className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 bg-gray-50/10">
+                            {messageList.length === 0 && (
+                                <div className="flex-1 flex flex-col items-center justify-center opacity-20 pointer-events-none">
+                                    <Image src="/message-2-fill.svg" alt="No messages" width={100} height={100} />
+                                    <p className="mt-4 text-sm font-medium">Say hi to {friendProfile?.name}!</p>
+                                </div>
+                            )}
+                            {messageList.map((msg, index) => (
+                                <div
+                                    key={msg.id || index}
+                                    className={`flex flex-col ${msg.author === currentUser ? "items-end" : "items-start"}`}
+                                >
+                                    <div
+                                        className={`max-w-[75%] p-3.5 rounded-2xl text-[13px] shadow-sm leading-relaxed ${
+                                            msg.author === currentUser 
+                                                ? "bg-blue-600 text-white rounded-br-none" 
+                                                : "bg-white text-gray-800 border border-gray-100 rounded-bl-none"
+                                        }`}
+                                    >
+                                        <p>{msg.message}</p>
+                                        <p className={`text-[9px] mt-1.5 font-medium ${msg.author === currentUser ? "text-blue-100 text-right" : "text-gray-400"}`}>
+                                            {msg.time}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </section>
+
+                        <section className="p-4 bg-white/50 backdrop-blur-md border-t border-gray-100">
+                            <div className="flex items-center gap-3 bg-gray-100/80 rounded-2xl px-4 py-2.5 border border-gray-200/50">
+                                <button className="hover:scale-110 transition-transform">
+                                    <Image src="/emotion-fill.svg" alt="Emoji" width={22} height={22} className="opacity-60" />
+                                </button>
+                                <input
+                                    type="text"
+                                    placeholder={`Message ${friendProfile?.name}...`}
+                                    className="flex-1 bg-transparent border-none outline-none text-sm py-1 font-medium placeholder:text-gray-400"
+                                    value={currentMessage}
+                                    onChange={(e) => setCurrentMessage(e.target.value)}
+                                    onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                                />
+                                <button 
+                                    onClick={sendMessage} 
+                                    className={`p-2 rounded-xl transition-all ${
+                                        currentMessage.trim() ? "bg-blue-600 shadow-md shadow-blue-200 scale-100" : "bg-gray-300 scale-95"
+                                    }`}
+                                    disabled={!currentMessage.trim()}
+                                >
+                                    <Image src="/send-plane-fill.svg" alt="Send" width={18} height={18} className="invert brightness-0" />
+                                </button>
+                            </div>
+                        </section>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/50">
+                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
+                            <Image src="/shield-user-fill.svg" alt="Privacy" width={40} height={40} className="text-blue-500 opacity-60" />
+                        </div>
+                        
+                        {!requestStatus && (
+                            <>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Connect with {friendProfile?.name}</h3>
+                                <p className="text-sm text-gray-500 max-w-xs mb-8">
+                                    You need to send a chat request before you can start messaging each other.
+                                </p>
+                                <button
+                                    onClick={sendRequest}
+                                    className="bg-blue-600 text-white font-semibold py-3 px-8 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-100"
+                                >
+                                    Send Chat Request
+                                </button>
+                            </>
+                        )}
+
+                        {requestStatus === "pending" && requestSender === currentUser && (
+                            <>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Request Sent!</h3>
+                                <p className="text-sm text-gray-500 max-w-xs">
+                                    Waiting for {friendProfile?.name} to accept your chat request.
+                                </p>
+                                <div className="mt-8 px-6 py-2 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-wider">
+                                    Pending Approval
+                                </div>
+                            </>
+                        )}
+
+                        {requestStatus === "pending" && requestSender !== currentUser && (
+                            <>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">New Chat Request</h3>
+                                <p className="text-sm text-gray-500 max-w-xs mb-8">
+                                    {friendProfile?.name} wants to start a private conversation with you.
+                                </p>
+                                <div className="flex gap-4 w-full max-w-xs">
+                                    <button
+                                        onClick={() => handleRequestAction("declined")}
+                                        className="flex-1 bg-white border border-gray-200 text-gray-600 font-semibold py-3 rounded-xl hover:bg-gray-50 transition"
+                                    >
+                                        Decline
+                                    </button>
+                                    <button
+                                        onClick={() => handleRequestAction("accepted")}
+                                        className="flex-1 bg-blue-600 text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-100"
+                                    >
+                                        Accept
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        {requestStatus === "declined" && (
+                            <>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Request Unavailable</h3>
+                                <p className="text-sm text-gray-500 max-w-xs">
+                                    This chat request was declined or is no longer available.
+                                </p>
+                                <button
+                                    onClick={sendRequest}
+                                    className="mt-8 text-blue-600 font-bold hover:underline"
+                                >
+                                    Try sending again
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
-        </section>
         </div>
-    )
-}
+    );
+};
+
 export default Messages;
