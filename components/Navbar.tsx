@@ -36,23 +36,23 @@ const Navbar = () => {
                 </h1>
             </div>
 
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-4 py-1.5 px-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 transition-colors duration-200">
+            <div className="flex items-center gap-3 sm:gap-6">
+                <div className="flex items-center gap-1.5 sm:gap-4 py-1.5 px-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 transition-colors duration-200">
                     <button onClick={toggleDarkMode} className="hover:opacity-100 transition-opacity flex items-center" title="Toggle Dark Mode">
                         <Image 
                             src={isDarkMode ? "/sun.svg" : "/moon.svg"} 
                             alt="Theme" 
                             width={18} 
                             height={18} 
-                            className={`opacity-60 hover:opacity-100 ${isDarkMode ? "invert" : "dark:invert"}`} 
+                            className={`opacity-60 hover:opacity-100 ${isDarkMode ? "invert brightness-0" : "dark:brightness-0 dark:invert"}`} 
                         />
                     </button>
-                    <Image src="/team-fill.svg" alt="Team" title="Team/Contacts" width={18} height={18} className="opacity-60 cursor-pointer hover:opacity-100 transition-opacity dark:invert" />
-                    <Image src="/chat-1-fill.svg" alt="Chat" title="Chat" width={18} height={18} className="text-blue-600 dark:invert dark:opacity-80" />
+                    <Image src="/team-fill.svg" alt="Team" title="Team/Contacts" width={18} height={18} className="opacity-60 cursor-pointer hover:opacity-100 transition-opacity dark:brightness-0 dark:invert" />
+                    <Image src="/chat-1-fill.svg" alt="Chat" title="Chat" width={18} height={18} className="text-blue-600 dark:brightness-0 dark:invert opacity-80" />
                     <button onClick={logout} className="hover:opacity-100 transition-opacity flex items-center" title="Logout">
-                         <Image src="/logout-box-line.svg" alt="Logout" width={18} height={18} className="opacity-60 dark:invert" />
+                         <Image src="/logout-box-line.svg" alt="Logout" width={18} height={18} className="opacity-60 dark:brightness-0 dark:invert" />
                     </button>
-                    <Image src="/more-2-fill.svg" alt="More" title="More Options" width={18} height={18} className="opacity-60 cursor-pointer hover:opacity-100 transition-opacity dark:invert" />
+                    <Image src="/more-2-fill.svg" alt="More" title="More Options" width={18} height={18} className="opacity-60 cursor-pointer hover:opacity-100 transition-opacity dark:brightness-0 dark:invert" />
                 </div>
                 
                 {user && (
