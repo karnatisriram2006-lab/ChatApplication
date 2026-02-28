@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef } from "react";
-import EmojiPicker from "emoji-picker-react";
+import EmojiPicker,{Theme} from "emoji-picker-react";
 import { Smile } from "lucide-react";
 import Image from "next/image";
 import { useEffect } from "react";
@@ -275,7 +275,7 @@ useEffect(() => {
         >
             <EmojiPicker
                 onEmojiClick={onEmojiClick}
-                theme="light"
+                theme={Theme.LIGHT}
                 height={350}
                 width={300}
             />
