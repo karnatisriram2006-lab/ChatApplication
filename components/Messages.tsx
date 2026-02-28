@@ -339,7 +339,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
                                     <EmojiPicker onEmojiClick={onEmojiClick} theme={isDark ? Theme.DARK : Theme.LIGHT} height={350} width={300} />
                                 </div>
                             )}
-                            <div className="flex items-center gap-3 bg-gray-100/80 dark:bg-gray-900/80 rounded-2xl px-4 py-2.5 border border-gray-200/50 dark:border-gray-800/50">
+                            <div className="flex items-center mb-4 gap-3 bg-gray-100/80 dark:bg-gray-900/80 rounded-2xl px-4 py-2.5 border border-gray-200/50 dark:border-gray-800/50">
                                 <button onClick={() => setShowEmojiPicker((prev) => !prev)} className="hover:scale-110 transition-transform flex-shrink-0">
                                     <Smile size={22} className="text-gray-500 dark:text-gray-400" />
                                 </button>
@@ -349,7 +349,7 @@ const Messages = ({ currentUser, selectedUser, onBack }: MessagesProps) => {
                                 </button>
                                 <input
                                     type="text" placeholder={`Message ${friendProfile?.name}...`}
-                                    className="flex-1 bg-transparent border-none outline-none text-sm py-1 font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-800 dark:text-gray-100"
+                                    className="flex-1 w-full min-w-0 bg-transparent border-none outline-none text-sm py-1 font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-800 dark:text-gray-100"
                                     value={currentMessage} onChange={(e) => { setCurrentMessage(e.target.value); handleTyping(); }}
                                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                                 />
