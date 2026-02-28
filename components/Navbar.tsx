@@ -11,7 +11,7 @@ const Navbar = () => {
                     <span className="text-white font-bold text-xl">C</span>
                 </div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent italic">
-                    ChatApp
+                    ChatApp.
                 </h1>
             </div>
 
@@ -34,7 +34,7 @@ const Navbar = () => {
                         <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-[2px]">
                             <div className="w-full h-full rounded-full bg-white p-[1px]">
                                 <Image 
-                                    src={user.photoURL || "/sriram.jpeg"} 
+                                    src={user.photoURL} 
                                     alt="Profile" 
                                     width={32} 
                                     height={32} 

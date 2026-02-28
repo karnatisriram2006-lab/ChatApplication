@@ -8,6 +8,11 @@ const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
+  fallback: [
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Noto Color Emoji"
+  ],
 });
 
 export const metadata: Metadata = {
@@ -22,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${poppins.className} antialiased`}>
+      <body className={`${poppins.className} font-sans`}>
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -1,7 +1,9 @@
 "use client";
-
+import { useState, useRef } from "react";
+import EmojiPicker from "emoji-picker-react";
+import { Smile } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { 
     collection, 
@@ -12,6 +14,9 @@ import {
     onSnapshot, 
     doc,
     setDoc,
+    deleteDoc,
+    writeBatch,
+    getDocs,
     serverTimestamp,
     Timestamp 
 } from "firebase/firestore";
@@ -36,7 +41,9 @@ const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
     const [requestStatus, setRequestStatus] = useState<string | null>(null);
     const [requestSender, setRequestSender] = useState<string | null>(null);
     const [friendProfile, setFriendProfile] = useState<{ name: string; avatar: string } | null>(null);
-    
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const emojiRef = useRef<HTMLDivElement>(null);
     // Create a unique room ID for the conversation by sorting and joining IDs
     const roomId = [currentUser, selectedUser].sort().join("_");
     const requestId = roomId; // We can use the same unique ID for the request
@@ -89,7 +96,24 @@ const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
             messageUnsubscribe();
         };
     }, [roomId, currentUser, selectedUser, requestId]);
+    const onEmojiClick = (emojiData: any) => {
+    setCurrentMessage((prev) => prev + emojiData.emoji);
+};
+useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+        if (
+            emojiRef.current &&
+            !emojiRef.current.contains(event.target as Node)
+        ) {
+            setShowEmojiPicker(false);
+        }
+    };
 
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+    };
+}, []);
     const sendRequest = async () => {
         try {
             await setDoc(doc(db, "chatRequests", requestId), {
@@ -132,8 +156,36 @@ const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
         }
     };
 
+    const deleteMessage = async (messageId: string) => {
+        try {
+            await deleteDoc(doc(db, "messages", messageId));
+        } catch (error) {
+            console.error("Error deleting message: ", error);
+        }
+    };
+
+    const clearChat = async () => {
+        if (!window.confirm("Are you sure you want to clear this entire chat? This cannot be undone.")) return;
+        
+        try {
+            const q = query(collection(db, "messages"), where("roomId", "==", roomId));
+            const snapshot = await getDocs(q);
+            const batch = writeBatch(db);
+            
+            snapshot.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+            setIsMenuOpen(false);
+        } catch (error) {
+            console.error("Error clearing chat: ", error);
+        }
+    };
+
     return (
         <div className="w-full flex flex-col justify-between h-[calc(100vh-64px)] overflow-hidden">
+            
             <section className="h-16 w-full bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center px-4 sticky top-0 z-10 shadow-sm">
                 <div className="flex items-center gap-3">
                     <Image src={friendProfile?.avatar || "/sriram.jpeg"} alt={friendProfile?.name || "User Profile"} width={45} height={45} className="rounded-full shadow-sm" />
@@ -144,11 +196,32 @@ const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
                         </p>
                     </div>
                 </div>
-                <div className="ml-auto flex gap-5 text-gray-400">
+                <div className="ml-auto flex gap-5 text-gray-400 items-center">
                     <Image src="/video-on-fill.svg" alt="Video" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
                     <Image src="/phone-fill.svg" alt="Phone" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
                     <Image src="/search-line.svg" alt="Search" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
-                    <Image src="/more-2-fill.svg" alt="More" width={22} height={22} className="cursor-pointer hover:text-blue-500 transition-colors" />
+                    
+                    <div className="relative">
+                        <Image 
+                            src="/more-2-fill.svg" 
+                            alt="More" 
+                            width={22} 
+                            height={22} 
+                            className="cursor-pointer hover:text-blue-500 transition-colors" 
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        />
+                        {isMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50">
+                                <button 
+                                    onClick={clearChat}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 font-medium transition-colors flex items-center gap-2"
+                                >
+                                    <Image src="/chat-delete-fill.svg" alt="Clear" width={16} height={16} className="opacity-70" />
+                                    Clear Chat
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </section>
 
@@ -165,33 +238,66 @@ const Messages = ({ currentUser, selectedUser }: MessagesProps) => {
                             {messageList.map((msg, index) => (
                                 <div
                                     key={msg.id || index}
-                                    className={`flex flex-col ${msg.author === currentUser ? "items-end" : "items-start"}`}
+                                    className={`flex flex-col group ${msg.author === currentUser ? "items-end" : "items-start"}`}
                                 >
-                                    <div
-                                        className={`max-w-[75%] p-3.5 rounded-2xl text-[13px] shadow-sm leading-relaxed ${
-                                            msg.author === currentUser 
-                                                ? "bg-blue-600 text-white rounded-br-none" 
-                                                : "bg-white text-gray-800 border border-gray-100 rounded-bl-none"
-                                        }`}
-                                    >
-                                        <p>{msg.message}</p>
-                                        <p className={`text-[9px] mt-1.5 font-medium ${msg.author === currentUser ? "text-blue-100 text-right" : "text-gray-400"}`}>
-                                            {msg.time}
-                                        </p>
+                                    <div className="flex items-center gap-2 max-w-[75%]">
+                                        {msg.author === currentUser && (
+                                            <button 
+                                                onClick={() => msg.id && deleteMessage(msg.id)}
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 rounded-lg transition-all text-red-400"
+                                                title="Delete message"
+                                            >
+                                                <Image src="/close-circle-fill.svg" alt="Delete" width={14} height={14} className="opacity-60" />
+                                            </button>
+                                        )}
+                                        <div
+                                            className={`p-3.5 rounded-2xl text-[13px] leading-[1.5] shadow-sm ${
+                                                msg.author === currentUser 
+                                                    ? "bg-blue-600 text-white rounded-br-none" 
+                                                    : "bg-white text-gray-800 border border-gray-100 rounded-bl-none"
+                                            }`}
+                                        >
+                                            <p className="leading-snug align-middle">{msg.message}</p>   
+                                            <p className={`text-[9px] mt-1.5 font-medium ${msg.author === currentUser ? "text-blue-100 text-right" : "text-gray-400"}`}>
+                                                {msg.time}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                         </section>
 
                         <section className="p-4 bg-white/50 backdrop-blur-md border-t border-gray-100">
+                            {showEmojiPicker && (
+        <div
+            ref={emojiRef}
+            className="absolute bottom-20 left-4 z-50 animate-fadeIn"
+        >
+            <EmojiPicker
+                onEmojiClick={onEmojiClick}
+                theme="light"
+                height={350}
+                width={300}
+            />
+        </div>
+    )}
                             <div className="flex items-center gap-3 bg-gray-100/80 rounded-2xl px-4 py-2.5 border border-gray-200/50">
-                                <button className="hover:scale-110 transition-transform">
-                                    <Image src="/emotion-fill.svg" alt="Emoji" width={22} height={22} className="opacity-60" />
-                                </button>
+                                <button
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            className="hover:scale-110 transition-transform"
+        >
+            <Image
+                src="/emotion-fill.svg"
+                alt="Emoji"
+                width={22}
+                height={22}
+                className="opacity-60"
+            />
+        </button>
                                 <input
                                     type="text"
                                     placeholder={`Message ${friendProfile?.name}...`}
-                                    className="flex-1 bg-transparent border-none outline-none text-sm py-1 font-medium placeholder:text-gray-400"
+                                    className="emoji-text flex-1 bg-transparent border-none outline-none text-sm py-1 font-medium placeholder:text-gray-400"
                                     value={currentMessage}
                                     onChange={(e) => setCurrentMessage(e.target.value)}
                                     onKeyPress={(e) => e.key === "Enter" && sendMessage()}
