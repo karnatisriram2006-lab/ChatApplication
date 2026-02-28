@@ -34,7 +34,7 @@ const Navbar = () => {
                         <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 p-[2px]">
                             <div className="w-full h-full rounded-full bg-white p-[1px]">
                                 <Image 
-                                    src={user.photoURL} 
+                                    src={user.photoURL||"/user-fill.svg"} 
                                     alt="Profile" 
                                     width={32} 
                                     height={32} 
