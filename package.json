@@ -9,18 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
     "emoji-picker-react": "^4.18.0",
     "express": "^5.2.1",
     "firebase": "^12.10.0",
-    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
-    "pg": "^8.19.0",
-    "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "socket.io": "^4.8.3",

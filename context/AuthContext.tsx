@@ -31,7 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     uid: user.uid,
                     name: user.displayName,
                     email: user.email,
-                    avatar: user.photoURL || "/sriram.jpeg",
+                    avatar: user.photoURL || "/user-fill.svg",
                     lastSeen: serverTimestamp(),
                     status: "Online"
                 }, { merge: true });
