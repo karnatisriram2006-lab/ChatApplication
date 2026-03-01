@@ -16,7 +16,6 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [waveform, setWaveform] = useState<number[]>([]);
 
-    // Generate a pseudo-random waveform based on the URL so it's consistent for the same message
     useEffect(() => {
         const seed = audioUrl.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
         const pseudoRandom = (s: number) => {
@@ -25,7 +24,7 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
         };
         
         const bars = Array.from({ length: 24 }, (_, i) => {
-            return 20 + pseudoRandom(seed + i) * 80;
+            return 25 + pseudoRandom(seed + i) * 75;
         });
         setWaveform(bars);
     }, [audioUrl]);
@@ -62,7 +61,7 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
     };
 
     const formatTime = (time: number) => {
-        if (isNaN(time)) return "0:00";
+        if (isNaN(time) || time === Infinity) return "0:00";
         const mins = Math.floor(time / 60);
         const secs = Math.floor(time % 60);
         return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -71,7 +70,7 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
-        <div className={`flex flex-col gap-1 min-w-[240px] ${isMe ? "bg-transparent" : "bg-transparent"}`}>
+        <div className={`flex flex-col gap-1.5 min-w-[200px] sm:min-w-[240px]`}>
             <audio 
                 ref={audioRef} 
                 src={audioUrl} 
@@ -84,23 +83,17 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
                 <button 
                     onClick={togglePlay}
                     className={`
-                        w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-md
-                        ${isMe ? "bg-white/20 hover:bg-white/30" : "bg-blue-600 hover:bg-blue-700 text-white"}
+                        w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-95 shadow-lg
+                        ${isMe ? "bg-white/15 hover:bg-white/20 text-white" : "bg-primary hover:bg-primary-hover text-white shadow-primary/20"}
                     `}
                 >
                     {isPlaying ? (
                         <div className="flex gap-1 items-center justify-center">
-                            <div className="w-1.5 h-4 bg-current rounded-full animate-pulse" />
-                            <div className="w-1.5 h-4 bg-current rounded-full animate-pulse" />
+                            <div className="w-1.5 h-4 bg-current rounded-full animate-pulse-soft" />
+                            <div className="w-1.5 h-4 bg-current rounded-full animate-pulse-soft" />
                         </div>
                     ) : (
-                        <Image 
-                            src="/play-large-fill.svg" 
-                            alt="Play" 
-                            width={16} 
-                            height={16} 
-                            className={`${isMe ? "brightness-0 invert" : "brightness-0 invert"}`} 
-                        />
+                        <Image src="/play-large-fill.svg" alt="Play" width={16} height={16} className="invert" />
                     )}
                 </button>
 
@@ -113,15 +106,13 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
                                     key={i} 
                                     className={`w-[3px] rounded-full transition-all duration-300 ${
                                         isPlayed 
-                                            ? (isMe ? "bg-white" : "bg-blue-600") 
-                                            : (isMe ? "bg-white/30" : "bg-gray-200 dark:bg-gray-700")
+                                            ? (isMe ? "bg-white" : "bg-accent shadow-[0_0_8px_rgba(34,211,238,0.5)]") 
+                                            : (isMe ? "bg-white/20" : "bg-border/60 dark:bg-white/10")
                                     }`}
                                     style={{ height: `${height}%` }}
                                 />
                             );
                         })}
-                        {/* Interactive overlay (UX improvement) */}
-                        <div className="absolute inset-0 cursor-pointer opacity-0" />
                     </div>
                 </div>
 
@@ -129,14 +120,14 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
                     <button 
                         onClick={togglePlaybackRate}
                         className={`
-                            text-[10px] font-black px-1.5 py-0.5 rounded-md transition-all
-                            ${isMe ? "bg-white/20 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}
-                            hover:scale-110
+                            text-[10px] font-black px-1.5 py-0.5 rounded-lg transition-all
+                            ${isMe ? "bg-white/10 text-white/90" : "bg-input-surface text-text-muted"}
+                            hover:scale-110 active:scale-90
                         `}
                     >
                         {playbackRate}x
                     </button>
-                    <span className={`text-[10px] font-bold opacity-70 ${isMe ? "text-white" : "text-gray-500"}`}>
+                    <span className={`text-[10px] font-bold opacity-70 ${isMe ? "text-white/90" : "text-text-muted"}`}>
                         {formatTime(currentTime || duration)}
                     </span>
                 </div>

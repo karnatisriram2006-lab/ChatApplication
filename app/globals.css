@@ -3,10 +3,26 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-accent: var(--accent);
+
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-border: var(--border);
   --color-surface: var(--surface);
+  --color-sidebar-surface: var(--sidebar-surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-input-surface: var(--input-surface);
+  --color-border: var(--border);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
@@ -25,25 +41,49 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --surface: #f8fafc;
-  --border: #e2e8f0;
+  --primary: #6366F1;
+  --primary-hover: #818CF8;
+  --primary-active: #4F46E5;
+  --accent: #22D3EE;
+
+  --background: #F8FAFC;
+  --surface: #FFFFFF;
+  --sidebar-surface: #F8FAFC;
+  --surface-elevated: #F1F5F9;
+  --input-surface: #F1F5F9;
+  --border: #E2E8F0;
+
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+
   --glass: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-border: rgba(255, 255, 255, 0.5);
 }
 
 .dark {
-  --background: #020617;
-  --foreground: #f8fafc;
-  --primary: #3b82f6;
-  --primary-hover: #60a5fa;
-  --surface: #0f172a;
-  --border: rgba(255, 255, 255, 0.08);
-  --glass: rgba(2, 6, 23, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --primary: #6366F1;
+  --primary-hover: #818CF8;
+  --primary-active: #4F46E5;
+  --accent: #22D3EE;
+
+  --background: #0B1220;
+  --surface: #0F172A;
+  --sidebar-surface: #111827;
+  --surface-elevated: #1E293B;
+  --input-surface: #1A2436;
+  --border: #1E293B;
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #64748B;
+
+  --glass: rgba(15, 23, 42, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
 @layer base {
@@ -53,58 +93,70 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    background-color: var(--background);
+    color: var(--text-primary);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .noise-panel {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .noise-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .dark .noise-panel::before {
+    opacity: 0.04;
   }
 }
 
 /* Custom Scrollbar */
-::-webkit-scrollbar {
+.custom-scrollbar::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-800 rounded-full transition-colors;
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-700;
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
 }
 
-/* Premium Utilities */
-.glass {
-  @apply backdrop-blur-xl bg-[var(--glass)] border border-[var(--glass-border)] shadow-premium;
-}
-
-.noise-panel {
-  position: relative;
-}
-
-.noise-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
-  opacity: 0.03;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.dark .noise-panel::before {
-  opacity: 0.05;
-  filter: invert(1);
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 /* Smooth Animations */
 @keyframes messageIn {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(10px) scale(0.98);
   }
 
   to {
@@ -115,25 +167,51 @@
 
 @keyframes slideUp {
   from {
-    opacity: 0;
     transform: translateY(20px);
+    opacity: 0;
   }
 
   to {
-    opacity: 1;
     transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideUpFade {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 
 @keyframes scaleIn {
   from {
-    opacity: 0;
     transform: scale(0.95);
+    opacity: 0;
   }
 
   to {
-    opacity: 1;
     transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-cyan {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(34, 211, 238, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
   }
 }
 
@@ -165,17 +243,28 @@
   }
 }
 
-/* Scroll Shadows */
-.scroll-shadow-top {
-  box-shadow: inset 0 10px 10px -10px rgba(0, 0, 0, 0.1);
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
-.scroll-shadow-bottom {
-  box-shadow: inset 0 -10px 10px -10px rgba(0, 0, 0, 0.1);
-}
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
 
-.theme-transition {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .animate-messageIn {
@@ -186,8 +275,16 @@
   animation: slideUp 0.3s ease-out forwards;
 }
 
+.animate-slideUpFade {
+  animation: slideUpFade 0.15s ease-out forwards;
+}
+
 .animate-scaleIn {
   animation: scaleIn 0.2s ease-out forwards;
+}
+
+.animate-pulse-cyan {
+  animation: pulse-cyan 2s infinite;
 }
 
 .animate-pulse-soft {
@@ -196,6 +293,14 @@
 
 .animate-bounce-dots {
   animation: bounce-dots 1.4s infinite ease-in-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 /* Custom Text Shadow for depth */

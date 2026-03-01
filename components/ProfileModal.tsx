@@ -38,8 +38,8 @@ const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn p-4 overflow-y-auto">
-            <div className="bg-white dark:bg-gray-950 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800 animate-scaleIn flex flex-col max-h-[90vh]">
-                <div className="flex-shrink-0 p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50 px-8">
+            <div className="bg-white dark:bg-surface-elevated w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-gray-100 dark:border-white/5 animate-scaleIn flex flex-col max-h-[90vh]">
+                <div className="flex-shrink-0 p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-background/50 px-8">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 italic tracking-tight">Profile Settings</h2>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-all active:scale-95">
                         <X size={22} className="text-gray-500" />
@@ -48,7 +48,7 @@ const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
 
                 <div className="p-8 flex flex-col items-center gap-8 overflow-y-auto custom-scrollbar">
                     <div className="relative group/avatar">
-                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-blue-500/20 p-1 bg-white dark:bg-gray-900 shadow-lg transition-transform group-hover/avatar:scale-105 duration-300">
+                        <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-blue-500/20 p-1 bg-white dark:bg-background shadow-lg transition-transform group-hover/avatar:scale-105 duration-300">
                             <Image 
                                 src={user.photoURL || "/user-fill.svg"} 
                                 alt="Profile" 
@@ -69,7 +69,7 @@ const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
                                 type="text" 
                                 value={name} 
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl outline-none focus:border-blue-500 transition-all text-gray-800 dark:text-gray-100 font-semibold"
+                                className="w-full px-5 py-4 bg-gray-50 dark:bg-background border border-gray-100 dark:border-white/5 rounded-2xl outline-none focus:border-blue-500 transition-all text-gray-800 dark:text-gray-100 font-semibold"
                                 placeholder="Your name"
                             />
                         </div>
@@ -79,7 +79,7 @@ const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
                             <textarea 
                                 value={bio} 
                                 onChange={(e) => setBio(e.target.value)}
-                                className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl outline-none focus:border-emerald-500 transition-all text-gray-800 dark:text-gray-100 font-medium resize-none h-28 leading-relaxed"
+                                className="w-full px-5 py-4 bg-gray-50 dark:bg-background border border-gray-100 dark:border-white/5 rounded-2xl outline-none focus:border-emerald-500 transition-all text-gray-800 dark:text-gray-100 font-medium resize-none h-28 leading-relaxed"
                                 placeholder="Tell us about yourself..."
                             />
                         </div>

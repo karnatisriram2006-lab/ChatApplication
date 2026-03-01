@@ -69,14 +69,14 @@ export default function Home() {
 
       <Navbar />
       
-      <main className="absolute top-[56px] bottom-0 left-0 right-0 flex overflow-hidden">
+      <main className="absolute top-[56px] bottom-0 left-0 right-0 flex overflow-hidden bg-background">
         {/* Sidebar/Chats list */}
-        <div className={`w-full md:w-[350px] border-r border-gray-200/20 dark:border-gray-800/50 backdrop-blur-sm bg-white/80 dark:bg-gray-950/90 transition-colors duration-200 ${selectedUser ? "hidden md:flex" : "flex"}`}>
+        <div className={`w-full md:w-[350px] border-r border-border backdrop-blur-sm bg-sidebar-surface transition-all duration-300 ${selectedUser ? "hidden md:flex" : "flex animate-slideInLeft"}`}>
           <Content currentUser={user.uid} />
         </div>
 
         {/* Chat area */}
-        <div className={`flex-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md transition-colors duration-200 noise-panel ${selectedUser ? "flex" : "hidden md:flex"}`}>
+        <div className={`flex-1 bg-surface backdrop-blur-md transition-all duration-300 noise-panel ${selectedUser ? "flex animate-slideIn" : "hidden md:flex"}`}>
           {selectedUser ? (
             <Messages currentUser={user.uid} />
           ) : (

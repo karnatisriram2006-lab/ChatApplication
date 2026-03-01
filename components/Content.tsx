@@ -1,12 +1,13 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, where, getDocs, doc, getDoc } from "firebase/firestore";
 import Chats from "./Chats";
 import { useChatStore } from "@/store/useChatStore";
 import GroupModal from "./GroupModal";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useModalStore } from "@/store/useModalStore";
+import { useAuth } from "@/context/AuthContext";
 
 interface ContentProps {
     currentUser: string;
@@ -92,13 +93,12 @@ const Content = ({ currentUser }: ContentProps) => {
     const allChats = [...filteredGroups, ...users];
 
     return (
-        <aside className="h-full w-full bg-white dark:bg-gray-950 flex flex-col border-r border-gray-200/50 dark:border-white/5">
+        <aside className="h-full w-full bg-sidebar-surface flex flex-col border-r border-border">
             {/* Sidebar header */}
-            <div className="px-6 pt-8 pb-6 bg-white dark:bg-gray-950 sticky top-0 z-10 transition-all duration-300">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100 tracking-tight flex items-center gap-2">
+            <div className="px-4 md:px-6 pt-6 md:pt-8 pb-4 md:pb-6 bg-sidebar-surface sticky top-0 z-10 transition-all duration-300">
+                <div className="flex justify-between items-center mb-4 md:mb-6">
+                    <h2 className="text-xl md:text-2xl font-black text-text-primary tracking-tight flex items-center gap-2">
                         Messages
-                        <span className="px-2 py-0.5 bg-blue-500/10 text-blue-600 text-[10px] font-black rounded-full uppercase tracking-widest">Beta</span>
                     </h2>
                     <button 
                         onClick={openGroupModal}
@@ -108,14 +108,16 @@ const Content = ({ currentUser }: ContentProps) => {
                         <Plus size={18} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
                     </button>
                 </div>
-                <div className="group flex items-center gap-3 bg-gray-100/50 dark:bg-gray-900/40 h-10 w-full rounded-xl px-4 border border-transparent focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-gray-950 focus-within:shadow-lg focus-within:shadow-blue-500/10 transition-all duration-300">
-                    <Image src="/search-line.svg" alt="Search" width={16} height={16} className="opacity-30 group-focus-within:opacity-60 dark:invert transition-opacity" />
+                <div className="relative group/search">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within/search:text-primary transition-colors">
+                        <Search size={18} />
+                    </div>
                     <input 
                         type="text" 
-                        placeholder="Jump to chat..." 
+                        placeholder="Search conversations..." 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-transparent border-none outline-none w-full text-[13px] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 font-bold" 
+                        className="w-full pl-11 pr-4 py-3 bg-input-surface border border-border rounded-2xl outline-none focus:border-primary transition-all text-sm font-medium text-text-primary placeholder:text-text-muted"
                     />
                 </div>
             </div>
