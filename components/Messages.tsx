@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
-import { Smile, Mic, Square, Trash2, Search, ChevronLeft, Video, Phone, MoreVertical, Send, Image as ImageIcon, X } from "lucide-react";
+import { Smile, Mic, Square, Trash2, Search, ChevronLeft, Video, Phone, MoreVertical, Send, Image as ImageIcon, X, CornerUpLeft, Check } from "lucide-react";
 import Image from "next/image";
 import VoiceMessage from "./VoiceMessage";
 import { db } from "@/lib/firebase";
@@ -16,6 +16,7 @@ import {
     onSnapshot, 
     doc,
     setDoc,
+    updateDoc,
     deleteDoc,
     writeBatch,
     getDocs,
@@ -65,7 +66,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
     const [groupMembers, setGroupMembers] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [messageSearchQuery, setMessageSearchQuery] = useState("");
-    const [reactionMsgId, setReactionMsgId] = useState<string | null>(null);
+    const [reactionPickerId, setReactionPickerId] = useState<string | null>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const emojiRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -260,6 +261,20 @@ const Messages = ({ currentUser }: MessagesProps) => {
         catch (error) { console.error(error); } finally { setIsActionLoading(false); }
     };
 
+    const handleReaction = async (messageId: string, emoji: string) => {
+        try {
+            const msgRef = doc(db, "messages", messageId);
+            await updateDoc(msgRef, {
+                reaction: emoji
+            });
+            setReactionPickerId(null);
+        } catch (error) {
+            console.error("Error adding reaction:", error);
+        }
+    };
+
+    const commonEmojis = ["❤️", "👍", "🔥", "😂", "😮", "😢"];
+
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative bg-surface">
             {lightboxUrl && (
@@ -376,10 +391,29 @@ const Messages = ({ currentUser }: MessagesProps) => {
                                                     <span className={`text-[9px] font-bold uppercase tracking-widest opacity-60 ${isMe ? 'text-white/80' : 'text-text-muted'}`}>{msg.time}</span>
                                                     {isMe && <span className="text-[10px] text-white/90">{msg.read ? '✓✓' : '✓'}</span>}
                                                 </div>
-                                                <div className={`absolute top-0 opacity-0 group-hover/bubble:opacity-100 flex items-center gap-1.5 transition-all ${isMe ? '-left-20' : '-right-20'}`}>
-                                                    <button onClick={() => setReplyTo(msg)} className="p-2 bg-surface-elevated border border-border rounded-full hover:text-primary transition-all hover:scale-110"><Smile size={14} /></button>
-                                                    <button onClick={() => deleteMessage(msg.id!)} className="p-2 bg-surface-elevated border border-border rounded-full hover:text-error transition-all hover:scale-110"><Trash2 size={14} /></button>
+                                                <div className={`absolute top-0 opacity-0 group-hover/bubble:opacity-100 flex items-center gap-1.5 transition-all z-10 ${isMe ? '-left-24' : '-right-24'}`}>
+                                                    <div className="relative">
+                                                        <button onClick={() => setReactionPickerId(reactionPickerId === msg.id ? null : msg.id!)} className="p-2 bg-surface-elevated border border-border rounded-full hover:text-primary transition-all hover:scale-110 shadow-sm"><Smile size={14} /></button>
+                                                        {reactionPickerId === msg.id && (
+                                                            <div className={`absolute bottom-full mb-2 bg-surface-elevated border border-border rounded-2xl p-1.5 flex gap-1 shadow-2xl animate-scaleIn z-[100] ${isMe ? 'right-0' : 'left-0'}`}>
+                                                                {commonEmojis.map(emoji => (
+                                                                    <button key={emoji} onClick={() => handleReaction(msg.id!, emoji)} className="text-xl hover:scale-125 transition-transform p-1">
+                                                                        {emoji}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <button onClick={() => setReplyTo(msg)} className="p-2 bg-surface-elevated border border-border rounded-full hover:text-primary transition-all hover:scale-110 shadow-sm"><CornerUpLeft size={14} /></button>
+                                                    <button onClick={() => deleteMessage(msg.id!)} className="p-2 bg-surface-elevated border border-border rounded-full hover:text-error transition-all hover:scale-110 shadow-sm"><Trash2 size={14} /></button>
                                                 </div>
+                                                {msg.reaction && (
+                                                    <div className={`absolute bottom-[-10px] ${isMe ? 'right-0' : 'left-0'} animate-bounceIn`}>
+                                                        <div className="bg-surface-elevated border border-border rounded-full px-1.5 py-0.5 shadow-md flex items-center gap-1 text-sm filter drop-shadow-sm">
+                                                            <span>{msg.reaction}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
