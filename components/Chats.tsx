@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { rtdb } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
+import { rtdb } from "@/lib/firebase";
 
 interface ChatsProps {
     userId: string;
@@ -9,67 +9,91 @@ interface ChatsProps {
     status: string;
     time: string;
     avatar: string;
-    isActive: boolean;
-    unreadCount?: number;
+    isActive?: boolean;
     onClick: () => void;
+    lastMessage?: string;
+    unreadCount?: number;
+    lastSeen?: any;
 }
 
-const Chats = ({ userId, name, status, time, avatar, isActive, unreadCount = 0, onClick }: ChatsProps) => {
-    const [internalStatus, setInternalStatus] = useState(status);
+const Chats = ({ userId, name, status, time, avatar, isActive, onClick, lastMessage, unreadCount = 0, lastSeen }: ChatsProps) => {
+    const [isOnline, setIsOnline] = useState(false);
+    const [liveLastSeen, setLiveLastSeen] = useState<any>(null);
 
     useEffect(() => {
         if (!userId) return;
-        const presenceRef = ref(rtdb, `presence/${userId}`);
-        const unsubscribe = onValue(presenceRef, (snapshot) => {
+        const statusRef = ref(rtdb, `presence/${userId}`);
+        const unsubscribe = onValue(statusRef, (snapshot) => {
             const data = snapshot.val();
-            if (data?.status) {
-                setInternalStatus(data.status);
+            setIsOnline(data?.status === "Online");
+            if (data?.lastSeen) {
+                setLiveLastSeen(data.lastSeen);
             }
         });
         return () => unsubscribe();
     }, [userId]);
 
-    const displayStatus = internalStatus || status;
+    const formatLastSeen = (ls: any) => {
+        if (!ls) return "Offline";
+        const date = typeof ls === 'number' ? new Date(ls) : (ls.toDate ? ls.toDate() : new Date());
+        return `Last seen ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
     return (
-        <section
+        <div 
             onClick={onClick}
-            className={`px-4 py-3 flex w-full items-center justify-between cursor-pointer transition-all duration-200 border-b border-gray-100/60 dark:border-gray-800/60 ${
-                isActive
-                    ? "bg-blue-50/50 dark:bg-blue-900/20 border-r-[3px] border-blue-500 shadow-sm"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-900/50"
-            }`}
+            className={`
+                relative px-5 py-3.5 cursor-pointer transition-all duration-200 group
+                flex items-center gap-4 border-l-[3.5px]
+                ${isActive 
+                    ? "bg-blue-50/60 dark:bg-blue-500/10 border-blue-600 dark:border-blue-500 shadow-sm" 
+                    : "bg-transparent border-transparent hover:bg-gray-50/80 dark:hover:bg-gray-800/40 hover:translate-x-1"
+                }
+            `}
         >
-            <div className="flex items-center gap-3">
-                <div className="relative flex-shrink-0">
-                    <div className={`rounded-full p-[2px] ${isActive ? "bg-gradient-to-tr from-blue-400 to-blue-500" : "bg-gray-200/60 dark:bg-gray-800"}`}>
-                        <Image
-                            src={avatar || "/user-fill.svg"}
-                            alt={name}
-                            width={40}
-                            height={40}
-                            className="rounded-full bg-white dark:bg-gray-900 object-cover"
-                        />
-                    </div>
-                    {displayStatus === "Online" && (
-                        <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-white dark:border-gray-900 rounded-full shadow-sm" />
-                    )}
+            <div className="relative flex-shrink-0">
+                <div className={`
+                    w-12 h-12 rounded-2xl overflow-hidden shadow-md transition-transform duration-300 group-hover:scale-105
+                    ${isActive ? "ring-2 ring-blue-500/20 ring-offset-2 dark:ring-offset-gray-950" : "border border-gray-100 dark:border-white/5"}
+                `}>
+                    <Image 
+                        src={avatar || "/user-fill.svg"} 
+                        alt={name} 
+                        width={48} 
+                        height={48} 
+                        className="w-full h-full object-cover"
+                    />
                 </div>
-                <div className="flex flex-col min-w-0">
-                    <p className={`font-semibold text-[13px] tracking-tight truncate ${isActive ? "text-blue-700 dark:text-blue-400" : "text-gray-800 dark:text-gray-200"}`}>{name}</p>
-                    <p className={`text-[11px] leading-tight font-medium ${displayStatus === "Online" ? "text-emerald-500 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>
-                        {displayStatus === "Online" ? "🟢 Online" : "⚫ Offline"}
-                    </p>
-                </div>
-            </div>
-            <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
-                <p className={`text-[10px] ${unreadCount > 0 ? "text-blue-600 dark:text-blue-400 font-bold" : "text-gray-400 dark:text-gray-500"}`}>{time}</p>
-                {unreadCount > 0 && (
-                    <div className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow">
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                    </div>
+                {userId && (
+                    <span className={`
+                        absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-gray-950 transition-colors
+                        ${isOnline ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-gray-300 dark:bg-gray-600"}
+                    `} />
                 )}
             </div>
-        </section>
+
+            <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-baseline mb-0.5">
+                    <h3 className={`text-[14px] font-black truncate transition-colors tracking-tight ${isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-gray-100"}`}>
+                        {name}
+                    </h3>
+                    <span className={`text-[9px] font-black uppercase tracking-widest shrink-0 ml-2 ${unreadCount > 0 ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}>
+                        {time}
+                    </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <p className={`text-[12px] truncate flex-1 font-medium leading-tight ${unreadCount > 0 ? "text-gray-900 dark:text-gray-100 font-bold" : "text-gray-500 dark:text-gray-400"}`}>
+                        {lastMessage || (status === "Group" ? "No messages yet" : (isOnline ? "Active now" : formatLastSeen(liveLastSeen || lastSeen)))}
+                    </p>
+                    {unreadCount > 0 && (
+                        <span className="px-1.5 py-0.5 min-w-[20px] h-[18px] bg-blue-600 text-white text-[10px] font-black rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30 animate-scaleIn">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 };
 

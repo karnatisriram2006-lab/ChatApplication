@@ -13,29 +13,45 @@ service cloud.firestore {
 
     // Chat Requests
     // Only the two participants in the requestId (which is the roomId) can read or write.
+    // Groups are excluded from chatRequests by logic in Messages.tsx, but this rule is safe.
     match /chatRequests/{requestId} {
       allow read, write: if request.auth != null 
-        && requestId.split('_').hasAny([request.auth.uid]);
+        && (requestId.split('_').hasAny([request.auth.uid]) || requestId == request.auth.uid);
     }
 
     // Messages
-    // Split into separate read and write rules for clarity.
-    // READ:  The authenticated user's UID must be part of the stored roomId.
-    // WRITE: The authenticated user's UID must be part of the roomId they are writing into.
-    //        This prevents spoofing (writing into someone else's chat).
     match /messages/{messageId} {
+      // Simplified read: allow if you are a participant in a 1v1 or if it's a room you have access to.
+      // We check if the user is in the roomId (for 1v1) or if they are a member of a group with that ID.
       allow read: if request.auth != null
-        && resource.data.roomId.split('_').hasAny([request.auth.uid]);
+        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
+            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
+             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
 
       allow create: if request.auth != null
-        && request.resource.data.roomId.split('_').hasAny([request.auth.uid])
+        && (request.resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
+            (exists(/databases/$(database)/documents/groups/$(request.resource.data.roomId)) && 
+             get(/databases/$(database)/documents/groups/$(request.resource.data.roomId)).data.members.hasAny([request.auth.uid])))
         && request.resource.data.author == request.auth.uid;
 
       allow update: if request.auth != null
-        && resource.data.roomId.split('_').hasAny([request.auth.uid]);
+        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
+            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
+             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
 
       allow delete: if request.auth != null
-        && resource.data.author == request.auth.uid;
+        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
+            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
+             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      // Allow authenticated users to read group metadata (to check membership).
+      // Sensitive data should be in subcollections or handled carefully.
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.members.hasAny([request.auth.uid]);
+      allow update: if request.auth != null && (resource.data.members.hasAny([request.auth.uid]) || request.resource.data.members.hasAny([request.auth.uid]));
     }
 
   }
