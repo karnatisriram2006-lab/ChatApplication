@@ -81,16 +81,19 @@ const Navbar = () => {
             {/* Nav actions */}
             <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 bg-surface-2/40 rounded-full border border-border p-1 backdrop-blur-md transition-all duration-300">
+                    {/* Theme Toggle (Global) */}
+                    <button
+                        onClick={toggleDarkMode}
+                        title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                        className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-surface-elevated/50 transition-all active:scale-90 focus-ring font-medium"
+                    >
+                        {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
+                    </button>
+
+                    <div className="w-px h-4 bg-border mx-0.5" />
+
                     {/* Desktop Only Actions */}
                     <div className="hidden md:flex items-center gap-1">
-                        <button
-                            onClick={toggleDarkMode}
-                            title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                            className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-surface-elevated/50 transition-all active:scale-90 focus-ring font-medium"
-                        >
-                            {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
-                        </button>
-                        <div className="w-px h-4 bg-border mx-0.5" />
                         <button className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-text-primary transition-all hover:bg-surface-elevated/50 active:scale-90"><Users size={15} /></button>
                         <div className="w-px h-4 bg-border mx-0.5" />
                     </div>
