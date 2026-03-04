@@ -1,19 +1,21 @@
-import { Poppins } from "next/font/google";
+import { DM_Sans, Space_Grotesk  } from "next/font/google";
 import type { Metadata } from "next";
 
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
-const poppins = Poppins({
+
+const dmSans = DM_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-  fallback: [
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Noto Color Emoji"
-  ],
-});
+  variable: "--font-body",
+  weight: ["400","500","700"]
+})
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-heading",
+  weight: ["400","500","600","700"]
+})
 
 export const metadata: Metadata = {
   title: "ChatApp — Private Messaging",
@@ -38,7 +40,7 @@ export default function RootLayout({
           `
         }} />
       </head>
-      <body className={`${poppins.className} font-sans`}>
+      <body className={`${dmSans.className} ${spaceGrotesk.className} font-sans`}>
         <AuthProvider>
           {children}
         </AuthProvider>

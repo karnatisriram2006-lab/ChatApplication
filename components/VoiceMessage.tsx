@@ -82,8 +82,9 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
             <div className="flex items-center gap-3">
                 <button 
                     onClick={togglePlay}
+                    aria-label={isPlaying ? "Pause voice message" : "Play voice message"}
                     className={`
-                        w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-95 shadow-lg
+                        w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-95 shadow-lg interactive-target focus-ring
                         ${isMe ? "bg-white/15 hover:bg-white/20 text-white" : "bg-primary hover:bg-primary-hover text-white shadow-primary/20"}
                     `}
                 >
@@ -93,7 +94,7 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
                             <div className="w-1.5 h-4 bg-current rounded-full animate-pulse-soft" />
                         </div>
                     ) : (
-                        <Image src="/play-large-fill.svg" alt="Play" width={16} height={16} className="invert" />
+                        <Image src="/play-large-fill.svg" alt="Play icon" width={16} height={16} className="invert" />
                     )}
                 </button>
 
@@ -119,8 +120,9 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
                 <div className="flex flex-col items-end gap-1 shrink-0">
                     <button 
                         onClick={togglePlaybackRate}
+                        aria-label={`Current playback rate is ${playbackRate}x. Click to change.`}
                         className={`
-                            text-[10px] font-black px-1.5 py-0.5 rounded-lg transition-all
+                            text-[10px] font-black px-1.5 py-0.5 rounded-lg transition-all focus-ring
                             ${isMe ? "bg-white/10 text-white/90" : "bg-input-surface text-text-muted"}
                             hover:scale-110 active:scale-90
                         `}
