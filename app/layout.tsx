@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import OfflineBanner from "@/components/OfflineBanner";
 
 
 const dmSans = DM_Sans({
@@ -41,6 +42,7 @@ export default function RootLayout({
         }} />
       </head>
       <body className={`${dmSans.className} ${spaceGrotesk.className} font-sans`}>
+        <OfflineBanner />
         <AuthProvider>
           {children}
         </AuthProvider>

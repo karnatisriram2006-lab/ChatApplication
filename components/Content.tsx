@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, limit, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit, where, Timestamp } from "firebase/firestore";
 import Chats from "./Chats";
 import { useChatStore } from "@/store/useChatStore";
 import { Plus, Search } from "lucide-react";
@@ -11,18 +11,18 @@ interface ContentProps {
     currentUser: string;
 }
 
-interface User {
+interface ChatUser {
     uid: string;
     name: string;
     status: string;
-    lastSeen: any;
+    lastSeen: Timestamp | null;
     avatar: string;
     isGroup?: boolean;
 }
 
 const Content = ({ currentUser }: ContentProps) => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [groups, setGroups] = useState<User[]>([]);
+    const [users, setUsers] = useState<ChatUser[]>([]);
+    const [groups, setGroups] = useState<ChatUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const { selectedUser, setSelectedUser } = useChatStore();
@@ -43,7 +43,7 @@ const Content = ({ currentUser }: ContentProps) => {
         }
 
         const unsubUsers = onSnapshot(q, (snapshot) => {
-            const usersData: User[] = [];
+            const usersData: ChatUser[] = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 if (doc.id !== currentUser) {
@@ -52,8 +52,8 @@ const Content = ({ currentUser }: ContentProps) => {
                         name: data.name,
                         status: data.status,
                         avatar: data.avatar,
-                        lastSeen: data.lastSeen,
-                    } as User);
+                        lastSeen: data.lastSeen ?? null,
+                    });
                 }
             });
             setUsers(usersData);
@@ -62,7 +62,7 @@ const Content = ({ currentUser }: ContentProps) => {
 
         const groupQ = query(collection(db, "groups"), where("members", "array-contains", currentUser));
         const unsubGroups = onSnapshot(groupQ, (snapshot) => {
-            const groupsData: User[] = [];
+            const groupsData: ChatUser[] = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 groupsData.push({
@@ -70,8 +70,9 @@ const Content = ({ currentUser }: ContentProps) => {
                     name: data.name,
                     status: "Group",
                     avatar: data.avatar || "/team-fill.svg",
+                    lastSeen: null,
                     isGroup: true,
-                } as User);
+                });
             });
             setGroups(groupsData);
         });

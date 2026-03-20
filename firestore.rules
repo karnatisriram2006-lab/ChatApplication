@@ -13,48 +13,64 @@ service cloud.firestore {
 
     // Chat Requests
     // Allow read/write if the authenticated user is either the sender (from) or receiver (to)
+    // Rate limiting is not natively supported in Firestore rules.
+    // Consider implementing rate limiting via Firebase Functions or a separate counter document.
     match /chatRequests/{requestId} {
-      allow read: if request.auth != null 
+      allow read: if request.auth != null
         && (resource == null || resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
-      allow create: if request.auth != null 
-        && request.resource.data.from == request.auth.uid;
-      allow update, delete: if request.auth != null 
+      allow create: if request.auth != null
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.keys().hasAll(['from', 'to', 'status', 'createdAt']);
+      allow update, delete: if request.auth != null
         && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
     }
 
     // Messages
     match /messages/{messageId} {
-      // Simplified read: allow if you are a participant in a 1v1 or if it's a room you have access to.
-      // We check if the user is in the roomId (for 1v1) or if they are a member of a group with that ID.
-      allow read: if request.auth != null
-        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
-            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
-             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
-
+      function isRoomParticipant(roomId) {
+        return roomId.split('_').hasAny([request.auth.uid]) ||
+          (exists(/databases/$(database)/documents/groups/$(roomId)) &&
+           get(/databases/$(database)/documents/groups/$(roomId)).data.members.hasAny([request.auth.uid]));
+      }
+      allow read: if request.auth != null && isRoomParticipant(resource.data.roomId);
       allow create: if request.auth != null
-        && (request.resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
-            (exists(/databases/$(database)/documents/groups/$(request.resource.data.roomId)) && 
-             get(/databases/$(database)/documents/groups/$(request.resource.data.roomId)).data.members.hasAny([request.auth.uid])))
-        && request.resource.data.author == request.auth.uid;
-
-      allow update: if request.auth != null
-        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
-            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
-             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
-
+        && isRoomParticipant(request.resource.data.roomId)
+        && request.resource.data.author == request.auth.uid
+        && request.resource.data.keys().hasAll(['roomId', 'author', 'text', 'createdAt', 'readBy'])
+        && request.resource.data.text.size() < 5000;
+      // Author can update any field; participants can only update readBy
+      allow update: if request.auth != null && (
+        (resource.data.author == request.auth.uid && isRoomParticipant(resource.data.roomId))
+        ||
+        (isRoomParticipant(resource.data.roomId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+          && request.resource.data.readBy.hasAll(resource.data.readBy)
+          && request.resource.data.readBy.hasAll([request.auth.uid]))
+      );
       allow delete: if request.auth != null
-        && (resource.data.roomId.split('_').hasAny([request.auth.uid]) || 
-            (exists(/databases/$(database)/documents/groups/$(resource.data.roomId)) && 
-             get(/databases/$(database)/documents/groups/$(resource.data.roomId)).data.members.hasAny([request.auth.uid])));
+        && resource.data.author == request.auth.uid
+        && isRoomParticipant(resource.data.roomId);
     }
 
     // Groups
+    // Read is open to any authenticated user because Firestore evaluates rules
+    // against every document during a query. Member-only rules cause permission
+    // errors when unrelated groups exist in the collection.
     match /groups/{groupId} {
-      // Allow authenticated users to read group metadata (to check membership).
-      // Sensitive data should be in subcollections or handled carefully.
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.members.hasAny([request.auth.uid]);
-      allow update: if request.auth != null && (resource.data.members.hasAny([request.auth.uid]) || request.resource.data.members.hasAny([request.auth.uid]));
+      allow create: if request.auth != null
+        && request.resource.data.members.hasAny([request.auth.uid]);
+      allow update: if request.auth != null
+        && (resource.data.members.hasAny([request.auth.uid])
+        || request.resource.data.members.hasAny([request.auth.uid]));
+    }
+
+    // Typing indicators subcollection
+    // Path: rooms/{roomId}/typing/{uid}
+    match /rooms/{roomId}/typing/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
   }

@@ -1,76 +1,80 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import {
-    Smile, Mic, Square, Trash2, Search, ChevronLeft,
+    Smile, Trash2, Search, ChevronLeft,
     Video, Phone, MoreVertical, Send, Image as ImageIcon,
-    X, CornerUpLeft, Check, CheckCheck, Users, Sparkles
+    X, CornerUpLeft, Users, Sparkles
 } from "lucide-react";
 import Image from "next/image";
 import VoiceMessage from "./VoiceMessage";
+import TypingIndicator from "./TypingIndicator";
+import TickIcon from "./TickIcon";
 import { db } from "@/lib/firebase";
 import { useChatStore } from "@/store/useChatStore";
+import { useAuth } from "@/context/AuthContext";
+import { useMessages } from "@/hooks/useMessages";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
+import { useReadReceipts } from "@/hooks/useReadReceipts";
+import { getReceiptStatus, getReaderCount } from "@/lib/readReceipts";
 import {
-    collection, addDoc, query, where, orderBy, onSnapshot,
-    doc, setDoc, updateDoc, deleteDoc, writeBatch, getDocs,
-    serverTimestamp, Timestamp, limit
+    collection, addDoc, query, where, onSnapshot,
+    doc, setDoc, updateDoc, deleteDoc, getDocs,
+    serverTimestamp, Timestamp
 } from "firebase/firestore";
 import { rtdb } from "@/lib/firebase";
-import { ref, onValue, set, onDisconnect } from "firebase/database";
+import { ref, onValue } from "firebase/database";
+import { logger } from "@/lib/logger";
+import type { Message } from "@/types/index";
 
-interface Message {
-    id?: string;
-    roomId: string;
-    author: string;
-    message: string;
-    time: string;
-    timestamp?: Timestamp;
+interface ChatMessage extends Message {
+    time?: string;
     read?: boolean;
     imageUrl?: string;
     audioUrl?: string;
     reaction?: string;
-    replyTo?: { message: string; author: string; };
+    replyTo?: { text: string; author: string; };
 }
 
 interface MessagesProps { currentUser: string; }
 
 const Messages = ({ currentUser }: MessagesProps) => {
     const { selectedUser, setSelectedUser } = useChatStore();
+    const { user } = useAuth();
+    const currentDisplayName = user?.displayName ?? null;
     const [currentMessage, setCurrentMessage] = useState("");
-    const [messageList, setMessageList] = useState<Message[]>([]);
     const [requestStatus, setRequestStatus] = useState<string | null>(null);
     const [requestSender, setRequestSender] = useState<string | null>(null);
-    const [friendProfile, setFriendProfile] = useState<{ name: string; avatar: string; status: string; lastSeen?: any; members?: string[] } | null>(null);
+    const [friendProfile, setFriendProfile] = useState<{ name: string; avatar: string; status: string; lastSeen?: Timestamp | null; members?: string[] } | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
-    const [friendTyping, setFriendTyping] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
     const [isGroup, setIsGroup] = useState(false);
-    const [groupMembers, setGroupMembers] = useState<any[]>([]);
+    const [groupMembers, setGroupMembers] = useState<{ uid: string; name: string }[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [messageSearchQuery, setMessageSearchQuery] = useState("");
     const [isDark, setIsDark] = useState(false);
-    const [replyTo, setReplyTo] = useState<Message | null>(null);
+    const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-    const [msgLimit, setMsgLimit] = useState(50);
 
-    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const emojiRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const isTypingRef = useRef(false);
+    const recordingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        audioRef.current = new Audio('/notification.mp3');
+        try { audioRef.current = new Audio('/notification.mp3'); } catch { /* skip */ }
+    }, []);
+
+    useEffect(() => {
         const checkDark = () => setIsDark(document.documentElement.classList.contains("dark"));
         checkDark();
         const obs = new MutationObserver(checkDark);
@@ -92,25 +96,51 @@ const Messages = ({ currentUser }: MessagesProps) => {
     const roomId = isGroup ? selectedUser! : [currentUser, selectedUser!].sort().join("_");
     const requestId = roomId;
 
+    const { messages: paginatedMessages, loadMore, hasMore, loading: messagesLoading } = useMessages({
+        roomId: selectedUser ? roomId : null,
+        currentUser,
+        pageSize: 30,
+    });
+
+    const { onTyping, onStopTyping, typingLabel, activeTypers } = useTypingIndicator(
+        selectedUser && requestStatus === "accepted" ? roomId : null,
+        currentUser,
+        currentDisplayName
+    );
+
+    const friendIsTyping = activeTypers.length > 0;
+
+    const participants = useMemo(() => {
+        if (isGroup) return friendProfile?.members ?? [];
+        if (!roomId) return [];
+        return roomId.split('_');
+    }, [isGroup, friendProfile?.members, roomId]);
+
+    useReadReceipts(
+        selectedUser && requestStatus === "accepted" ? roomId : null,
+        currentUser
+    );
+
     useEffect(() => {
         if (!currentUser || !selectedUser) return;
         let unsubProfile: (() => void) | null = null;
         let unsubPresence: (() => void) | null = null;
-        let unsubTyping: (() => void) | null = null;
         let unsubRequest: (() => void) | null = null;
-        let unsubMessages: (() => void) | null = null;
 
         const setupChat = async () => {
             const groupSnap = await getDocs(query(collection(db, "groups"), where("__name__", "==", selectedUser)));
             if (!groupSnap.empty) {
                 setIsGroup(true);
-                const data = groupSnap.docs[0].data();
+                const groupDoc = groupSnap.docs[0];
+                if (!groupDoc) return;
+                const data = groupDoc.data();
                 setFriendProfile({ name: data.name || "Group", avatar: data.avatar || "", status: "Group", members: data.members });
                 setRequestStatus("accepted");
-                const membersData: any[] = [];
-                for (const memberId of data.members) {
+                const membersData: { uid: string; name: string }[] = [];
+                for (const memberId of data.members as string[]) {
                     const ms = await getDocs(query(collection(db, "users"), where("__name__", "==", memberId)));
-                    if (!ms.empty) membersData.push({ uid: memberId, name: ms.docs[0].data().name });
+                    const memberDoc = ms.docs[0];
+                    if (memberDoc) membersData.push({ uid: memberId, name: memberDoc.data().name });
                 }
                 setGroupMembers(membersData);
             } else {
@@ -128,50 +158,41 @@ const Messages = ({ currentUser }: MessagesProps) => {
                 });
                 unsubPresence = onValue(ref(rtdb, `presence/${selectedUser}`), (snap) => {
                     const d = snap.val();
-                    if (d) setFriendProfile(prev => ({ ...prev || { name: "User", avatar: "", status: "Offline" }, status: d.status || "Offline", lastSeen: d.lastSeen ? { toDate: () => new Date(d.lastSeen) } : prev?.lastSeen }));
+                    if (d) setFriendProfile(prev => ({ ...prev || { name: "User", avatar: "", status: "Offline" }, status: d.status || "Offline", lastSeen: d.lastSeen ? { toDate: () => new Date(d.lastSeen) } as Timestamp : prev?.lastSeen }));
                 });
-                unsubTyping = onValue(ref(rtdb, `typing/${roomId}/${selectedUser}`), (snap) => setFriendTyping(!!snap.val()));
                 unsubRequest = onSnapshot(doc(db, "chatRequests", requestId), (snap) => {
                     if (snap.exists()) { setRequestStatus(snap.data().status); setRequestSender(snap.data().from); }
                     else { setRequestStatus(null); setRequestSender(null); }
                 });
             }
-            const q = query(collection(db, "messages"), where("roomId", "==", roomId), orderBy("timestamp", "desc"), limit(msgLimit));
-            unsubMessages = onSnapshot(q, (snapshot) => {
-                const messages: Message[] = [];
-                const batch = writeBatch(db);
-                let hasUnread = false;
-                snapshot.forEach((snap) => {
-                    const d = snap.data();
-                    messages.unshift({ id: snap.id, ...d } as Message);
-                    if (d.author !== currentUser && !d.read) { batch.update(doc(db, "messages", snap.id), { read: true }); hasUnread = true; }
-                });
-                if (hasUnread) { batch.commit().catch(console.error); audioRef.current?.play().catch(() => {}); }
-                setMessageList(messages);
-            });
         };
         setupChat();
-        return () => { unsubProfile?.(); unsubPresence?.(); unsubTyping?.(); unsubRequest?.(); unsubMessages?.(); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); };
-    }, [selectedUser, currentUser, roomId, requestId, msgLimit]);
+        return () => { unsubProfile?.(); unsubPresence?.(); unsubRequest?.(); };
+    }, [selectedUser, currentUser, roomId, requestId]);
 
-    useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messageList]);
+    useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [paginatedMessages]);
 
-    const handleTyping = () => {
-        if (requestStatus !== "accepted" || isGroup) return;
-        const myTypingRef = ref(rtdb, `typing/${roomId}/${currentUser}`);
-        if (!isTypingRef.current) { isTypingRef.current = true; set(myTypingRef, true); onDisconnect(myTypingRef).remove(); }
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => { isTypingRef.current = false; set(myTypingRef, false); }, 2000);
-    };
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                onStopTyping();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [onStopTyping]);
 
     const sendMessage = async () => {
         if (!currentMessage.trim() || requestStatus !== "accepted") return;
-        const data: any = { roomId, author: currentUser, message: currentMessage.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), timestamp: serverTimestamp() };
-        if (replyTo) data.replyTo = { message: replyTo.message, author: replyTo.author };
-        try { setCurrentMessage(""); setReplyTo(null); await addDoc(collection(db, "messages"), data); } catch (e) { console.error(e); }
+        onStopTyping();
+        const data: Record<string, unknown> = { roomId, author: currentUser, text: currentMessage.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), createdAt: serverTimestamp(), readBy: [] };
+        if (replyTo) data.replyTo = { text: replyTo.text, author: replyTo.author };
+        try { setCurrentMessage(""); setReplyTo(null); await addDoc(collection(db, "messages"), data); } catch (e) { logger.error(e); }
     };
 
-    const deleteMessage = async (msgId: string) => { try { await deleteDoc(doc(db, "messages", msgId)); } catch (e) { console.error(e); } };
+    const deleteMessage = async (msgId: string) => { try { await deleteDoc(doc(db, "messages", msgId)); } catch (e) { logger.error(e); } };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -182,26 +203,28 @@ const Messages = ({ currentUser }: MessagesProps) => {
             const form = new FormData();
             form.append("file", file); form.append("api_key", apiKey); form.append("timestamp", timestamp.toString()); form.append("signature", signature);
             const { secure_url } = await (await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form })).json();
-            await addDoc(collection(db, "messages"), { roomId, author: currentUser, message: "Photo", imageUrl: secure_url, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), timestamp: serverTimestamp() });
-        } catch (e) { console.error(e); } finally { setIsUploading(false); }
+            await addDoc(collection(db, "messages"), { roomId, author: currentUser, text: "Photo", imageUrl: secure_url, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), createdAt: serverTimestamp(), readBy: [] });
+        } catch (e) { logger.error(e); } finally { setIsUploading(false); }
     };
 
     const sendRequest = async () => {
         if (!currentUser || !selectedUser) return;
         setIsActionLoading(true);
         try {
-            await setDoc(doc(db, "chatRequests", requestId), { from: currentUser, to: selectedUser, status: "pending", timestamp: serverTimestamp() });
-        } catch (e) { console.error(e); } finally { setIsActionLoading(false); }
+            await setDoc(doc(db, "chatRequests", requestId), { from: currentUser, to: selectedUser, status: "pending", createdAt: serverTimestamp() });
+        } catch (e) { logger.error(e); } finally { setIsActionLoading(false); }
     };
 
     const handleRequestAction = async (newStatus: "accepted" | "declined") => {
         setIsActionLoading(true);
         try { await updateDoc(doc(db, "chatRequests", requestId), { status: newStatus }); }
-        catch (e) { console.error(e); } finally { setIsActionLoading(false); }
+        catch (e) { logger.error(e); } finally { setIsActionLoading(false); }
     };
 
     const isOnline = friendProfile?.status?.toLowerCase() === "online";
     const statusColor = isOnline ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-500";
+
+    const messageList = paginatedMessages as ChatMessage[];
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative bg-surface noise-panel transition-colors duration-300">
@@ -210,7 +233,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md animate-fadeIn" onClick={() => setLightboxUrl(null)}>
                     <button className="absolute top-5 right-5 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all focus-ring z-10"><X size={20} /></button>
                     <div className="relative max-w-[90vw] max-h-[90vh] animate-scaleIn" onClick={e => e.stopPropagation()}>
-                        <img src={lightboxUrl} alt="Attachment" className="rounded-2xl border border-white/10 max-h-[90vh] object-contain shadow-premium" />
+                        <Image src={lightboxUrl} alt="Attachment" width={800} height={800} className="rounded-2xl border border-white/10 max-h-[90vh] object-contain shadow-premium" />
                     </div>
                 </div>
             )}
@@ -239,8 +262,8 @@ const Messages = ({ currentUser }: MessagesProps) => {
                                 <p className="font-bold text-[15px] sm:text-[20px] text-text-primary tracking-tight truncate leading-tight">
                                     {friendProfile?.name || "Loading..."}
                                 </p>
-                                <p className={`text-[12px] font-medium leading-none ${friendTyping ? "text-primary animate-fadeIn" : isOnline ? "text-secondary" : "text-text-muted"}`}>
-                                    {isGroup ? `${friendProfile?.members?.length ?? 0} members` : friendTyping ? "typing..." : isOnline ? "Online" : "Offline"}
+                                <p className={`text-[12px] font-medium leading-none ${friendIsTyping ? "text-primary animate-fadeIn" : isOnline ? "text-secondary" : "text-text-muted"}`}>
+                                    {isGroup ? `${friendProfile?.members?.length ?? 0} members` : friendIsTyping ? "typing..." : isOnline ? "Online" : "Offline"}
                                 </p>
                             </div>
                         </div>
@@ -263,79 +286,101 @@ const Messages = ({ currentUser }: MessagesProps) => {
             <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 flex flex-col custom-scrollbar relative">
                 <div className="flex flex-col gap-1 pb-4">
                     {requestStatus === "accepted" ? (
-                        messageList.length > 0 ? (
-                            messageList
-                                .filter(msg => msg.message.toLowerCase().includes(messageSearchQuery.toLowerCase()))
-                                .map((msg, index, arr) => {
-                                    const isMe = msg.author === currentUser;
-                                    const isGrouped = arr[index - 1]?.author === msg.author;
-                                    const showAvatar = !isGrouped && !isMe;
-                                    
-                                    return (
-                                        <div key={msg.id || index} className={`flex flex-col ${isMe ? "items-end" : "items-start"} ${isGrouped ? "mt-0.5" : "mt-5"} animate-messageIn`}>
-                                            {!isMe && !isGrouped && (
-                                                <p className="text-[12px] font-bold text-text-muted mb-1 ml-11 tracking-tight uppercase">
-                                                    {isGroup ? groupMembers.find(m => m.uid === msg.author)?.name : friendProfile?.name}
-                                                </p>
-                                            )}
-                                            
-                                            <div className="flex items-end gap-2.5 max-w-[85%] sm:max-w-[70%] group/bubble relative">
-                                                {!isMe && (
-                                                    <div className={`w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-surface-2 transition-opacity duration-300 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
-                                                        {showAvatar && friendProfile?.avatar && <Image src={friendProfile.avatar} alt="" width={32} height={32} className="w-full h-full object-cover" />}
-                                                    </div>
+                        <>
+                            {hasMore && messageList.length > 0 && (
+                                <div className="flex justify-center pb-4">
+                                    <button
+                                        onClick={loadMore}
+                                        disabled={messagesLoading}
+                                        className="px-4 py-2 text-[12px] font-bold text-text-muted bg-surface-2 border border-border rounded-xl hover:bg-surface-elevated active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                                    >
+                                        {messagesLoading ? "Loading..." : "Load older messages"}
+                                    </button>
+                                </div>
+                            )}
+                            {messageList.length > 0 ? (
+                                messageList
+                                    .filter(msg => msg.text.toLowerCase().includes(messageSearchQuery.toLowerCase()))
+                                    .map((msg, index, arr) => {
+                                        const isMe = msg.author === currentUser;
+                                        const isGrouped = arr[index - 1]?.author === msg.author;
+                                        const showAvatar = !isGrouped && !isMe;
+                                        
+                                        return (
+                                            <div key={msg.id || index} className={`flex flex-col ${isMe ? "items-end" : "items-start"} ${isGrouped ? "mt-0.5" : "mt-5"} animate-messageIn`}>
+                                                {!isMe && !isGrouped && (
+                                                    <p className="text-[12px] font-bold text-text-muted mb-1 ml-11 tracking-tight uppercase">
+                                                        {isGroup ? groupMembers.find(m => m.uid === msg.author)?.name : friendProfile?.name}
+                                                    </p>
                                                 )}
-
-                                                <div className={`
-                                                    relative px-4 py-2.5 shadow-sm transition-all duration-200 hover:scale-[1.02]
-                                                    ${isMe 
-                                                        ? "primary-gradient text-white rounded-[18px] rounded-br-[4px] shadow-glow" 
-                                                        : "bg-sidebar-surface text-text-primary border border-border rounded-[18px] rounded-bl-[4px] font-medium"
-                                                    }
-                                                `}>
-                                                    {msg.replyTo && (
-                                                        <div className="bg-black/10 dark:bg-white/10 rounded-lg p-2 mb-2 text-[12px] border-l-2 border-primary/40 truncate opacity-80 italic">
-                                                            <p className="font-bold opacity-70 mb-0.5">{msg.replyTo.author === currentUser ? "You" : friendProfile?.name}</p>
-                                                            {msg.replyTo.message}
+                                                
+                                                <div className="flex items-end gap-2.5 max-w-[85%] sm:max-w-[70%] group/bubble relative">
+                                                    {!isMe && (
+                                                        <div className={`w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-surface-2 transition-opacity duration-300 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
+                                                            {showAvatar && friendProfile?.avatar && <Image src={friendProfile.avatar} alt="" width={32} height={32} className="w-full h-full object-cover" />}
                                                         </div>
                                                     )}
 
-                                                    {msg.imageUrl ? (
-                                                        <div className="relative w-64 h-64 rounded-xl overflow-hidden cursor-zoom-in group-hover:scale-[1.01] transition-transform" onClick={() => setLightboxUrl(msg.imageUrl!)}>
-                                                            <Image src={msg.imageUrl} alt="" fill className="object-cover" />
+                                                    <div className={`
+                                                        relative px-4 py-2.5 shadow-sm transition-all duration-200 hover:scale-[1.02]
+                                                        ${isMe 
+                                                            ? "primary-gradient text-white rounded-[18px] rounded-br-[4px] shadow-glow" 
+                                                            : "bg-sidebar-surface text-text-primary border border-border rounded-[18px] rounded-bl-[4px] font-medium"
+                                                        }
+                                                    `}>
+                                                        {msg.replyTo && (
+                                                            <div className="bg-black/10 dark:bg-white/10 rounded-lg p-2 mb-2 text-[12px] border-l-2 border-primary/40 truncate opacity-80 italic">
+                                                                <p className="font-bold opacity-70 mb-0.5">{msg.replyTo.author === currentUser ? "You" : friendProfile?.name}</p>
+                                                                {msg.replyTo.text}
+                                                            </div>
+                                                        )}
+
+                                                        {msg.imageUrl ? (
+                                                            <div className="relative w-64 h-64 rounded-xl overflow-hidden cursor-zoom-in group-hover:scale-[1.01] transition-transform" onClick={() => setLightboxUrl(msg.imageUrl!)}>
+                                                                <Image src={msg.imageUrl} alt="" fill className="object-cover" />
+                                                            </div>
+                                                        ) : msg.audioUrl ? (
+                                                            <VoiceMessage audioUrl={msg.audioUrl} isMe={isMe} />
+                                                        ) : (
+                                                            <p className="text-[14px] leading-relaxed break-words">{msg.text}</p>
+                                                        )}
+
+                                                        <div className={`flex items-center gap-1.5 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                                                            <span className={`text-[10px] font-bold opacity-60`}>{msg.time}</span>
+                                                            {isMe && !msg.deleted && (
+                                                                <>
+                                                                    <TickIcon
+                                                                        status={getReceiptStatus(msg, participants)}
+                                                                        isGroup={isGroup}
+                                                                        readerCount={getReaderCount(msg, participants)}
+                                                                    />
+                                                                    <span className="sr-only">{getReceiptStatus(msg, participants)}</span>
+                                                                </>
+                                                            )}
                                                         </div>
-                                                    ) : msg.audioUrl ? (
-                                                        <VoiceMessage audioUrl={msg.audioUrl} isMe={isMe} />
-                                                    ) : (
-                                                        <p className="text-[14px] leading-relaxed break-words">{msg.message}</p>
-                                                    )}
 
-                                                    <div className={`flex items-center gap-1.5 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                                                        <span className={`text-[10px] font-bold opacity-60`}>{msg.time}</span>
-                                                        {isMe && (msg.read ? <CheckCheck size={12} className="text-white/80" /> : <Check size={12} className="text-white/50" />)}
-                                                    </div>
-
-                                                    {/* Hover actions */}
-                                                    <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-all flex items-center gap-1 ${isMe ? "right-full mr-2" : "left-full ml-2"}`}>
-                                                        <button onClick={() => setReplyTo(msg)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-primary transition-all active:scale-90 cursor-pointer"><CornerUpLeft size={14} /></button>
-                                                        <button onClick={() => deleteMessage(msg.id!)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-error transition-all active:scale-90 cursor-pointer"><Trash2 size={14} /></button>
+                                                        {/* Hover actions */}
+                                                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-all flex items-center gap-1 ${isMe ? "right-full mr-2" : "left-full ml-2"}`}>
+                                                            <button onClick={() => setReplyTo(msg)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-primary transition-all active:scale-90 cursor-pointer"><CornerUpLeft size={14} /></button>
+                                                            <button onClick={() => deleteMessage(msg.id!)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-error transition-all active:scale-90 cursor-pointer"><Trash2 size={14} /></button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                })
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center gap-5 animate-fadeIn">
-                                <div className="w-20 h-20 primary-gradient rounded-3xl flex items-center justify-center shadow-premium transform rotate-3 hover:rotate-0 transition-transform">
-                                    <Sparkles size={40} className="text-white opacity-80" />
+                                        );
+                                    })
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center gap-5 animate-fadeIn">
+                                    <div className="w-20 h-20 primary-gradient rounded-3xl flex items-center justify-center shadow-premium transform rotate-3 hover:rotate-0 transition-transform">
+                                        <Sparkles size={40} className="text-white opacity-80" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-[20px] font-black text-text-primary tracking-tight">Start the conversation</h2>
+                                        <p className="text-[14px] text-text-secondary max-w-xs mt-1">Send your first message to {friendProfile?.name || "Request"}. Premium end-to-end encrypted.</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-[20px] font-black text-text-primary tracking-tight">✨ Start the conversation</h2>
-                                    <p className="text-[14px] text-text-secondary max-w-xs mt-1">Send your first message to {friendProfile?.name || "Request"}. Premium end-to-end encrypted.</p>
-                                </div>
-                            </div>
-                        )
+                            )}
+                        </>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center gap-5">
                             <div className="w-16 h-16 glass rounded-2xl flex items-center justify-center shadow-premium"><Users size={32} className="text-primary opacity-60" /></div>
@@ -368,11 +413,12 @@ const Messages = ({ currentUser }: MessagesProps) => {
                         <div className="max-w-4xl mx-auto mb-2 glass p-3 rounded-xl flex items-center justify-between border-l-4 border-primary animate-slideIn">
                             <div className="min-w-0">
                                 <p className="text-[11px] font-black text-primary uppercase">Replying to {replyTo.author === currentUser ? "Yourself" : friendProfile?.name}</p>
-                                <p className="text-[13px] text-text-secondary truncate">{replyTo.message}</p>
+                                <p className="text-[13px] text-text-secondary truncate">{replyTo.text}</p>
                             </div>
                             <button onClick={() => setReplyTo(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X size={14} /></button>
                         </div>
                     )}
+                    <TypingIndicator label={typingLabel} />
                     <div className="max-w-4xl mx-auto flex items-end gap-3 glass p-2 rounded-[22px] shadow-premium focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/30 transition-all border-glass-border relative">
                         {showEmojiPicker && (
                             <div className="absolute bottom-full left-0 mb-4 z-50 animate-messageIn shadow-premium rounded-2xl overflow-hidden border border-glass-border" ref={emojiRef}>
@@ -387,7 +433,8 @@ const Messages = ({ currentUser }: MessagesProps) => {
                         <textarea
                             className="flex-1 bg-transparent border-none outline-none py-2.5 px-1 text-[14px] text-text-primary placeholder:text-text-muted/50 resize-none max-h-32 custom-scrollbar font-medium"
                             placeholder="Write a message..." rows={1} value={currentMessage}
-                            onChange={e => { setCurrentMessage(e.target.value); handleTyping(); }}
+                            onChange={e => { setCurrentMessage(e.target.value); onTyping(); }}
+                            onBlur={onStopTyping}
                             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                         />
                         <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 text-text-muted transition-all active:scale-90 cursor-pointer"><ImageIcon size={22} /></button>

@@ -5,15 +5,17 @@ import Image from "next/image";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { X, Camera, Save, User as UserIcon } from "lucide-react";
+import { logger } from "@/lib/logger";
+import type { User } from "firebase/auth";
 
 interface ProfileModalProps {
-    user: any;
+    user: User;
     onClose: () => void;
 }
 
 const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
     const [name, setName] = useState(user.displayName || "");
-    const [bio, setBio] = useState(user.bio || "Hey there! I am using ChatApp.");
+    const [bio, setBio] = useState("Hey there! I am using ChatApp.");
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = async () => {
@@ -23,7 +25,7 @@ const ProfileModal = ({ user, onClose }: ProfileModalProps) => {
             await updateDoc(userRef, { name: name, nameLowercase: name.toLowerCase(), bio: bio });
             onClose();
         } catch (error) {
-            console.error("Error updating profile:", error);
+            logger.error("Error updating profile:", error);
             alert("Failed to update profile.");
         } finally { setIsSaving(false); }
     };

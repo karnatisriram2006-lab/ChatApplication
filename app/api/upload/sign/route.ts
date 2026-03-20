@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
+import { logger } from '@/lib/logger';
 
 cloudinary.config({
     cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
@@ -12,7 +13,6 @@ export async function GET() {
     try {
         const timestamp = Math.round(new Date().getTime() / 1000);
 
-        // Any advanced parameters (like folder, tags, etc) would go in this object
         const paramsToSign = {
             timestamp: timestamp,
         };
@@ -28,8 +28,8 @@ export async function GET() {
             apiKey: process.env.CLOUDINARY_API_KEY,
             cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
         });
-    } catch (error: any) {
-        console.error('Error generating Cloudinary signature:', error);
+    } catch (error: unknown) {
+        logger.error('Error generating Cloudinary signature:', error);
         return NextResponse.json(
             { error: 'Failed to authenticate upload request' },
             { status: 500 }

@@ -5,19 +5,35 @@ import { useState, useEffect, useRef } from "react";
 import { useModalStore } from "@/store/useModalStore";
 import { Sun, Moon, Users, MessageSquare, LogOut, Bell, Check, X } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, updateDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, updateDoc, doc, getDoc, Timestamp } from "firebase/firestore";
+import { logger } from "@/lib/logger";
+
+interface NotificationRequest {
+    id: string;
+    from: string;
+    to: string;
+    status: string;
+    createdAt: Timestamp;
+    senderData: {
+        name: string;
+        avatar: string;
+    } | null;
+}
 
 const Navbar = () => {
     const { user, logout } = useAuth();
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        if (typeof document !== 'undefined') {
+            return document.documentElement.classList.contains("dark");
+        }
+        return false;
+    });
     const { openProfileModal } = useModalStore();
-    const [notifications, setNotifications] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<NotificationRequest[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setIsDarkMode(document.documentElement.classList.contains("dark"));
-        
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setShowNotifications(false);
@@ -39,10 +55,17 @@ const Navbar = () => {
         
         const unsubscribe = onSnapshot(q, async (snap) => {
             const pendingDocs = snap.docs.filter((d) => d.data().status === "pending");
-            const reqs = await Promise.all(pendingDocs.map(async (d) => {
+            const reqs: NotificationRequest[] = await Promise.all(pendingDocs.map(async (d) => {
                 const data = d.data();
                 const senderSnap = await getDoc(doc(db, "users", data.from));
-                return { id: d.id, ...data, senderData: senderSnap.exists() ? senderSnap.data() : null };
+                return {
+                    id: d.id,
+                    from: data.from,
+                    to: data.to,
+                    status: data.status,
+                    createdAt: data.createdAt,
+                    senderData: senderSnap.exists() ? { name: senderSnap.data().name, avatar: senderSnap.data().avatar } : null,
+                };
             }));
             setNotifications(reqs);
         });
@@ -55,7 +78,7 @@ const Navbar = () => {
             await updateDoc(doc(db, "chatRequests", requestId), { status: newStatus });
             // Let the onSnapshot handle removing it locally
         } catch (e) {
-            console.error(e);
+            logger.error(e);
         }
     };
 

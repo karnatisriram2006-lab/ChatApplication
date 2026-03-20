@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import { Check, CheckCheck } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 
 interface ChatsProps {
     userId: string;
@@ -12,7 +13,7 @@ interface ChatsProps {
     onClick: () => void;
     lastMessage?: string;
     unreadCount?: number;
-    lastSeen?: any;
+    lastSeen: Timestamp | null;
 }
 
 const Chats = ({

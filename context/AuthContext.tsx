@@ -10,6 +10,7 @@ import {
 import { auth, googleProvider, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { usePresence } from "@/hooks/usePresence";
+import { logger } from "@/lib/logger";
 
 interface AuthContextType {
     user: User | null;
@@ -54,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
             await signInWithPopup(auth, googleProvider);
         } catch (error) {
-            console.error("Login failed:", error);
+            logger.error("Login failed:", error);
         }
     };
 
@@ -62,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
             await signOut(auth);
         } catch (error) {
-            console.error("Logout failed:", error);
+            logger.error("Logout failed:", error);
         }
     };
 

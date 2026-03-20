@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useMemo } from "react";
 import Image from "next/image";
 
 interface VoiceMessageProps {
@@ -14,19 +14,16 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
     const [duration, setDuration] = useState(0);
     const [playbackRate, setPlaybackRate] = useState(1);
     const audioRef = useRef<HTMLAudioElement>(null);
-    const [waveform, setWaveform] = useState<number[]>([]);
 
-    useEffect(() => {
+    const waveform = useMemo(() => {
         const seed = audioUrl.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
         const pseudoRandom = (s: number) => {
              const x = Math.sin(s) * 10000;
              return x - Math.floor(x);
         };
-        
-        const bars = Array.from({ length: 24 }, (_, i) => {
+        return Array.from({ length: 24 }, (_, i) => {
             return 25 + pseudoRandom(seed + i) * 75;
         });
-        setWaveform(bars);
     }, [audioUrl]);
 
     const togglePlay = () => {
@@ -52,8 +49,8 @@ const VoiceMessage = ({ audioUrl, isMe }: VoiceMessageProps) => {
     };
 
     const togglePlaybackRate = () => {
-        const rates = [1, 1.5, 2];
-        const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+        const rates: number[] = [1, 1.5, 2];
+        const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length] ?? 1;
         setPlaybackRate(nextRate);
         if (audioRef.current) {
             audioRef.current.playbackRate = nextRate;

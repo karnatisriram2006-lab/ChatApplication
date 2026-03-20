@@ -5,20 +5,21 @@ import Image from "next/image";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { X, Users, Check, Search, Plus } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface GroupModalProps {
     currentUser: string;
     onClose: () => void;
 }
 
-interface User {
+interface ContactUser {
     uid: string;
     name: string;
     avatar: string;
 }
 
 const GroupModal = ({ currentUser, onClose }: GroupModalProps) => {
-    const [contacts, setContacts] = useState<User[]>([]);
+    const [contacts, setContacts] = useState<ContactUser[]>([]);
     const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
     const [groupName, setGroupName] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
@@ -28,7 +29,7 @@ const GroupModal = ({ currentUser, onClose }: GroupModalProps) => {
         const fetchContacts = async () => {
             const q = query(collection(db, "users"), orderBy("name", "asc"));
             const snapshot = await getDocs(q);
-            const usersData: User[] = [];
+            const usersData: ContactUser[] = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 if (doc.id !== currentUser) {
@@ -70,15 +71,15 @@ const GroupModal = ({ currentUser, onClose }: GroupModalProps) => {
             await addDoc(collection(db, "messages"), {
                 roomId: groupRef.id,
                 author: currentUser,
-                message: `Group "${groupName}" created`,
+                text: `Group "${groupName}" created`,
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                timestamp: serverTimestamp(),
+                createdAt: serverTimestamp(),
                 system: true
             });
 
             onClose();
         } catch (error) {
-            console.error("Error creating group:", error);
+            logger.error("Error creating group:", error);
             alert("Failed to create group.");
         } finally {
             setIsCreating(false);
@@ -129,13 +130,13 @@ const GroupModal = ({ currentUser, onClose }: GroupModalProps) => {
                             />
                         </div>
                         <div className="max-h-64 overflow-y-auto pr-2 flex flex-col gap-2 custom-scrollbar">
-                            {filteredContacts.length > 0 ? filteredContacts.map(user => (
+                            {filteredContacts.length > 0 ? filteredContacts.map(contact => (
                                 <div 
-                                    key={user.uid}
-                                    onClick={() => toggleMember(user.uid)}
+                                    key={contact.uid}
+                                    onClick={() => toggleMember(contact.uid)}
                                     className={`
                                         flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 border
-                                        ${selectedMembers.includes(user.uid)
+                                        ${selectedMembers.includes(contact.uid)
                                             ? "bg-primary/8 dark:bg-primary/15 border-primary shadow-sm" 
                                             : "bg-surface-2/20 dark:bg-surface-2/40 border-transparent hover:bg-surface-2 hover:border-border"
                                         }
@@ -143,19 +144,19 @@ const GroupModal = ({ currentUser, onClose }: GroupModalProps) => {
                                 >
                                     <div className="flex-1 flex items-center gap-4">
                                         <div className="relative">
-                                            <div className="w-11 h-11 rounded-xl glass p-[1.5px] shadow-sm transform group-hover:scale-105 transition-transform">
-                                                <Image src={user.avatar || "/user-fill.svg"} alt={user.name} width={40} height={40} className="w-full h-full rounded-[10px] object-cover" />
+                                            <div className="w-11 h-11 rounded-xl glass p-[1.5px] shadow-sm">
+                                                <Image src={contact.avatar || "/user-fill.svg"} alt={contact.name} width={40} height={40} className="w-full h-full rounded-[10px] object-cover" />
                                             </div>
-                                            {selectedMembers.includes(user.uid) && (
+                                            {selectedMembers.includes(contact.uid) && (
                                                 <div className="absolute -top-1 -right-1 bg-primary text-white rounded-full p-0.5 border-2 border-surface shadow-glow animate-scaleIn">
                                                     <Check size={10} strokeWidth={4} />
                                                 </div>
                                             )}
                                         </div>
-                                        <p className={`text-[15px] font-bold tracking-tight ${selectedMembers.includes(user.uid) ? 'text-primary' : 'text-text-primary'}`}>{user.name}</p>
+                                        <p className={`text-[15px] font-bold tracking-tight ${selectedMembers.includes(contact.uid) ? 'text-primary' : 'text-text-primary'}`}>{contact.name}</p>
                                     </div>
-                                    <div className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${selectedMembers.includes(user.uid) ? 'bg-primary border-primary' : 'border-border'}`}>
-                                        {selectedMembers.includes(user.uid) && <Check size={12} className="text-white" strokeWidth={3} />}
+                                    <div className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${selectedMembers.includes(contact.uid) ? 'bg-primary border-primary' : 'border-border'}`}>
+                                        {selectedMembers.includes(contact.uid) && <Check size={12} className="text-white" strokeWidth={3} />}
                                     </div>
                                 </div>
                             )) : (
