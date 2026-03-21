@@ -1,13 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { 
-    onAuthStateChanged, 
-    signInWithPopup, 
-    signOut, 
-    User 
+import {
+    onAuthStateChanged,
+    signOut,
+    User
 } from "firebase/auth";
-import { auth, googleProvider, db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { usePresence } from "@/hooks/usePresence";
 import { logger } from "@/lib/logger";
@@ -15,7 +14,6 @@ import { logger } from "@/lib/logger";
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    loginWithGoogle: () => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -25,18 +23,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Track real-time Online/Offline presence via RTDB (free, accurate, tab-close safe)
     usePresence(user?.uid ?? undefined);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // Upsert user to Firestore
                 await setDoc(doc(db, "users", user.uid), {
                     uid: user.uid,
                     name: user.displayName,
                     nameLowercase: user.displayName?.toLowerCase() ?? "",
-                    email: user.email,
+                    phone: user.phoneNumber,
                     avatar: user.photoURL || "/user-fill.svg",
                     lastSeen: serverTimestamp(),
                     status: "Online"
@@ -51,14 +47,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return () => unsubscribe();
     }, []);
 
-    const loginWithGoogle = async () => {
-        try {
-            await signInWithPopup(auth, googleProvider);
-        } catch (error) {
-            logger.error("Login failed:", error);
-        }
-    };
-
     const logout = async () => {
         try {
             await signOut(auth);
@@ -68,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout }}>
+        <AuthContext.Provider value={{ user, loading, logout }}>
             {children}
         </AuthContext.Provider>
     );

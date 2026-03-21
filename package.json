@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest",
+    "predev": "node scripts/inject-sw-env.js",
+    "prebuild": "node scripts/inject-sw-env.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -21,6 +23,7 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "resend": "^6.9.4",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0",

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import {
     Smile, Trash2, Search, ChevronLeft,
-    Video, Phone, MoreVertical, Send, Image as ImageIcon,
+    Video, Phone, Send, Image as ImageIcon,
     X, CornerUpLeft, Users, Sparkles
 } from "lucide-react";
 import Image from "next/image";
@@ -20,7 +20,7 @@ import { useReadReceipts } from "@/hooks/useReadReceipts";
 import { getReceiptStatus, getReaderCount } from "@/lib/readReceipts";
 import {
     collection, addDoc, query, where, onSnapshot,
-    doc, setDoc, updateDoc, deleteDoc, getDocs,
+    doc, setDoc, deleteDoc, getDocs, writeBatch,
     serverTimestamp, Timestamp
 } from "firebase/firestore";
 import { rtdb } from "@/lib/firebase";
@@ -44,13 +44,10 @@ const Messages = ({ currentUser }: MessagesProps) => {
     const { user } = useAuth();
     const currentDisplayName = user?.displayName ?? null;
     const [currentMessage, setCurrentMessage] = useState("");
-    const [requestStatus, setRequestStatus] = useState<string | null>(null);
-    const [requestSender, setRequestSender] = useState<string | null>(null);
     const [friendProfile, setFriendProfile] = useState<{ name: string; avatar: string; status: string; lastSeen?: Timestamp | null; members?: string[] } | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
-    const [isActionLoading, setIsActionLoading] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
     const [isGroup, setIsGroup] = useState(false);
@@ -65,14 +62,9 @@ const Messages = ({ currentUser }: MessagesProps) => {
 
     const emojiRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        try { audioRef.current = new Audio('/notification.mp3'); } catch { /* skip */ }
-    }, []);
 
     useEffect(() => {
         const checkDark = () => setIsDark(document.documentElement.classList.contains("dark"));
@@ -103,7 +95,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
     });
 
     const { onTyping, onStopTyping, typingLabel, activeTypers } = useTypingIndicator(
-        selectedUser && requestStatus === "accepted" ? roomId : null,
+        selectedUser ? roomId : null,
         currentUser,
         currentDisplayName
     );
@@ -117,7 +109,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
     }, [isGroup, friendProfile?.members, roomId]);
 
     useReadReceipts(
-        selectedUser && requestStatus === "accepted" ? roomId : null,
+        selectedUser ? roomId : null,
         currentUser
     );
 
@@ -125,7 +117,6 @@ const Messages = ({ currentUser }: MessagesProps) => {
         if (!currentUser || !selectedUser) return;
         let unsubProfile: (() => void) | null = null;
         let unsubPresence: (() => void) | null = null;
-        let unsubRequest: (() => void) | null = null;
 
         const setupChat = async () => {
             const groupSnap = await getDocs(query(collection(db, "groups"), where("__name__", "==", selectedUser)));
@@ -135,7 +126,6 @@ const Messages = ({ currentUser }: MessagesProps) => {
                 if (!groupDoc) return;
                 const data = groupDoc.data();
                 setFriendProfile({ name: data.name || "Group", avatar: data.avatar || "", status: "Group", members: data.members });
-                setRequestStatus("accepted");
                 const membersData: { uid: string; name: string }[] = [];
                 for (const memberId of data.members as string[]) {
                     const ms = await getDocs(query(collection(db, "users"), where("__name__", "==", memberId)));
@@ -155,19 +145,15 @@ const Messages = ({ currentUser }: MessagesProps) => {
                             status: prev?.status === "Online" || prev?.status === "Offline" ? prev.status : (d.status || "Offline")
                         }));
                     }
-                });
+                }, () => {});
                 unsubPresence = onValue(ref(rtdb, `presence/${selectedUser}`), (snap) => {
                     const d = snap.val();
                     if (d) setFriendProfile(prev => ({ ...prev || { name: "User", avatar: "", status: "Offline" }, status: d.status || "Offline", lastSeen: d.lastSeen ? { toDate: () => new Date(d.lastSeen) } as Timestamp : prev?.lastSeen }));
                 });
-                unsubRequest = onSnapshot(doc(db, "chatRequests", requestId), (snap) => {
-                    if (snap.exists()) { setRequestStatus(snap.data().status); setRequestSender(snap.data().from); }
-                    else { setRequestStatus(null); setRequestSender(null); }
-                });
             }
         };
         setupChat();
-        return () => { unsubProfile?.(); unsubPresence?.(); unsubRequest?.(); };
+        return () => { unsubProfile?.(); unsubPresence?.(); };
     }, [selectedUser, currentUser, roomId, requestId]);
 
     useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [paginatedMessages]);
@@ -185,7 +171,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
     }, [onStopTyping]);
 
     const sendMessage = async () => {
-        if (!currentMessage.trim() || requestStatus !== "accepted") return;
+        if (!currentMessage.trim()) return;
         onStopTyping();
         const data: Record<string, unknown> = { roomId, author: currentUser, text: currentMessage.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), createdAt: serverTimestamp(), readBy: [] };
         if (replyTo) data.replyTo = { text: replyTo.text, author: replyTo.author };
@@ -194,9 +180,31 @@ const Messages = ({ currentUser }: MessagesProps) => {
 
     const deleteMessage = async (msgId: string) => { try { await deleteDoc(doc(db, "messages", msgId)); } catch (e) { logger.error(e); } };
 
+    const [clearedAt, setClearedAt] = useState<Timestamp | null>(null);
+
+    // Load clear timestamp
+    useEffect(() => {
+        if (!roomId || !currentUser) return;
+        const unsub = onSnapshot(doc(db, "users", currentUser, "clearTimestamps", roomId), (snap) => {
+            setClearedAt(snap.exists() ? snap.data().clearedAt ?? null : null);
+        }, () => {});
+        return () => unsub();
+    }, [roomId, currentUser]);
+
+    const clearChat = async () => {
+        if (!roomId || !currentUser) return;
+        setShowClearConfirm(false);
+        try {
+            const { serverTimestamp: sts } = await import('firebase/firestore');
+            await setDoc(doc(db, "users", currentUser, "clearTimestamps", roomId), {
+                clearedAt: sts(),
+            });
+        } catch (e) { logger.error(e); }
+    };
+
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || requestStatus !== "accepted") return;
+        if (!file) return;
         setIsUploading(true);
         try {
             const { signature, timestamp, apiKey, cloudName } = await (await fetch('/api/upload/sign')).json();
@@ -207,24 +215,13 @@ const Messages = ({ currentUser }: MessagesProps) => {
         } catch (e) { logger.error(e); } finally { setIsUploading(false); }
     };
 
-    const sendRequest = async () => {
-        if (!currentUser || !selectedUser) return;
-        setIsActionLoading(true);
-        try {
-            await setDoc(doc(db, "chatRequests", requestId), { from: currentUser, to: selectedUser, status: "pending", createdAt: serverTimestamp() });
-        } catch (e) { logger.error(e); } finally { setIsActionLoading(false); }
-    };
-
-    const handleRequestAction = async (newStatus: "accepted" | "declined") => {
-        setIsActionLoading(true);
-        try { await updateDoc(doc(db, "chatRequests", requestId), { status: newStatus }); }
-        catch (e) { logger.error(e); } finally { setIsActionLoading(false); }
-    };
-
     const isOnline = friendProfile?.status?.toLowerCase() === "online";
     const statusColor = isOnline ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-500";
 
-    const messageList = paginatedMessages as ChatMessage[];
+    const messageList = (paginatedMessages as ChatMessage[]).filter(msg => {
+        if (!clearedAt || !msg.createdAt) return true;
+        try { return msg.createdAt.toMillis() > clearedAt.toMillis(); } catch { return true; }
+    });
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative bg-surface noise-panel transition-colors duration-300">
@@ -234,6 +231,20 @@ const Messages = ({ currentUser }: MessagesProps) => {
                     <button className="absolute top-5 right-5 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-all focus-ring z-10"><X size={20} /></button>
                     <div className="relative max-w-[90vw] max-h-[90vh] animate-scaleIn" onClick={e => e.stopPropagation()}>
                         <Image src={lightboxUrl} alt="Attachment" width={800} height={800} className="rounded-2xl border border-white/10 max-h-[90vh] object-contain shadow-premium" />
+                    </div>
+                </div>
+            )}
+
+            {/* Clear chat confirmation */}
+            {showClearConfirm && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn" onClick={() => setShowClearConfirm(false)}>
+                    <div className="glass rounded-2xl p-6 shadow-premium border-glass-border animate-scaleIn max-w-sm mx-4 noise-panel" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-text-primary mb-2">Clear chat?</h3>
+                        <p className="text-sm text-text-secondary mb-6">This will delete all messages in this conversation. This cannot be undone.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowClearConfirm(false)} className="flex-1 py-2.5 bg-surface-2 border border-border text-text-primary font-bold rounded-xl hover:bg-surface-elevated active:scale-95 transition-all cursor-pointer">Cancel</button>
+                            <button onClick={clearChat} className="flex-1 py-2.5 bg-error text-white font-bold rounded-xl hover:bg-error/90 active:scale-95 transition-all cursor-pointer">Clear</button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -271,7 +282,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
                             <button className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-surface-2 transition-all cursor-pointer"><Video size={18} /></button>
                             <button className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-surface-2 transition-all cursor-pointer"><Phone size={18} /></button>
                             <button onClick={() => setIsSearching(true)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-surface-2 transition-all cursor-pointer"><Search size={18} /></button>
-                            <MoreVertical size={18} className="cursor-pointer hover:text-text-primary ml-1" />
+                            <button onClick={() => setShowClearConfirm(true)} title="Clear chat" className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-surface-2 transition-all cursor-pointer text-text-muted hover:text-error"><Trash2 size={18} /></button>
                         </div>
                     </>
                 ) : (
@@ -285,9 +296,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
             {/* List */}
             <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 flex flex-col custom-scrollbar relative">
                 <div className="flex flex-col gap-1 pb-4">
-                    {requestStatus === "accepted" ? (
-                        <>
-                            {hasMore && messageList.length > 0 && (
+                    {hasMore && messageList.length > 0 && (
                                 <div className="flex justify-center pb-4">
                                     <button
                                         onClick={loadMore}
@@ -362,7 +371,7 @@ const Messages = ({ currentUser }: MessagesProps) => {
                                                         {/* Hover actions */}
                                                         <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-all flex items-center gap-1 ${isMe ? "right-full mr-2" : "left-full ml-2"}`}>
                                                             <button onClick={() => setReplyTo(msg)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-primary transition-all active:scale-90 cursor-pointer"><CornerUpLeft size={14} /></button>
-                                                            <button onClick={() => deleteMessage(msg.id!)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-error transition-all active:scale-90 cursor-pointer"><Trash2 size={14} /></button>
+                                                            {isMe && <button onClick={() => deleteMessage(msg.id!)} className="w-8 h-8 rounded-full glass flex items-center justify-center hover:text-error transition-all active:scale-90 cursor-pointer"><Trash2 size={14} /></button>}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -380,34 +389,12 @@ const Messages = ({ currentUser }: MessagesProps) => {
                                     </div>
                                 </div>
                             )}
-                        </>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center py-20 px-10 text-center gap-5">
-                            <div className="w-16 h-16 glass rounded-2xl flex items-center justify-center shadow-premium"><Users size={32} className="text-primary opacity-60" /></div>
-                            <div>
-                                <h2 className="text-[20px] font-bold text-text-primary">Chat Request</h2>
-                                <p className="text-[14px] text-text-secondary max-w-xs mt-1">Start messaging in a premium SaaS-grade secure environment.</p>
-                            </div>
-                            {requestStatus === "pending" ? (
-                                <button disabled className="px-8 py-3 bg-surface-2 text-text-muted rounded-xl border border-border text-[14px] font-bold opacity-60">Request Pending...</button>
-                            ) : requestSender === currentUser ? (
-                                <button disabled className="px-8 py-3 bg-surface-2 text-text-muted rounded-xl border border-border text-[14px] font-bold opacity-60">Request Sent</button>
-                            ) : requestSender ? (
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => handleRequestAction("accepted")} className="px-6 py-2.5 primary-gradient text-white font-bold rounded-xl shadow-glow active:scale-95 transition-all cursor-pointer">Accept</button>
-                                    <button onClick={() => handleRequestAction("declined")} className="px-6 py-2.5 bg-surface-2 text-text-primary font-bold rounded-xl border border-border active:scale-95 transition-all cursor-pointer">Decline</button>
-                                </div>
-                            ) : (
-                                <button onClick={sendRequest} className="px-8 py-3 primary-gradient text-white font-bold rounded-xl shadow-glow active:scale-95 transition-all cursor-pointer">Send Chat Request</button>
-                            )}
-                        </div>
-                    )}
                     <div ref={messagesEndRef} />
                 </div>
             </main>
 
             {/* Input */}
-            {requestStatus === "accepted" && (
+            {selectedUser && (
                 <footer className="px-4 py-4 md:px-6 transition-all duration-300 relative z-50">
                     {replyTo && (
                         <div className="max-w-4xl mx-auto mb-2 glass p-3 rounded-xl flex items-center justify-between border-l-4 border-primary animate-slideIn">

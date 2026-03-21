@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, orderBy, limit, onSnapshot,
@@ -12,6 +12,7 @@ interface UseMessagesOptions {
   roomId: string | null;
   currentUser: string;
   pageSize?: number;
+  onNewIncomingMessage?: (message: { author: string; text: string; roomId: string }) => void;
 }
 
 interface UseMessagesResult {
@@ -22,12 +23,13 @@ interface UseMessagesResult {
   error: Error | null;
 }
 
-export function useMessages({ roomId, currentUser, pageSize = 30 }: UseMessagesOptions): UseMessagesResult {
+export function useMessages({ roomId, currentUser, pageSize = 30, onNewIncomingMessage }: UseMessagesOptions): UseMessagesResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [lastDoc, setLastDoc] = useState<DocumentData | null>(null);
+  const prevMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!roomId) {
@@ -35,6 +37,7 @@ export function useMessages({ roomId, currentUser, pageSize = 30 }: UseMessagesO
       setHasMore(true);
       setLastDoc(null);
       setLoading(false);
+      prevMessageIdsRef.current = new Set();
       return;
     }
 
@@ -74,6 +77,18 @@ export function useMessages({ roomId, currentUser, pageSize = 30 }: UseMessagesO
 
         if (hasUnread) {
           batch.commit().catch((e: Error) => logger.error("Mark-as-read batch failed:", e));
+        }
+
+        // Detect new incoming messages for toast notifications
+        if (onNewIncomingMessage) {
+          const currentIds = new Set(snapshot.docs.map(d => d.id));
+          snapshot.docs.forEach((snap) => {
+            const d = snap.data();
+            if (!prevMessageIdsRef.current.has(snap.id) && d.author !== currentUser) {
+              onNewIncomingMessage({ author: d.author, text: d.text ?? '', roomId: d.roomId });
+            }
+          });
+          prevMessageIdsRef.current = currentIds;
         }
 
         msgs.reverse();

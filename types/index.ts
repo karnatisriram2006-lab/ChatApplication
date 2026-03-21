@@ -3,10 +3,21 @@ import { Timestamp } from 'firebase/firestore';
 export interface UserProfile {
   uid: string;
   displayName: string;
-  email: string;
-  photoURL?: string;
+  displayNameLower?: string;
+  phone?: string;
+  email?: string;
+  photoURL?: string | null;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+}
+
+export interface Contact {
+  uid: string;
+  displayName: string;
+  phone?: string;
+  photoURL?: string | null;
+  roomId: string;
+  addedAt: Timestamp;
 }
 
 export interface Message {
@@ -22,10 +33,13 @@ export interface Message {
 
 export type ReceiptStatus = 'sent' | 'delivered' | 'read';
 
-export interface ChatRequest {
+export interface ChatInvite {
   id?: string;
   from: string;
+  fromName: string;
+  fromPhone?: string | null;
   to: string;
+  toName: string;
   status: 'pending' | 'accepted' | 'declined';
   createdAt: Timestamp;
 }

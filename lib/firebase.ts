@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getDatabase } from "firebase/database";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const requiredEnvVars = [
     "NEXT_PUBLIC_FIREBASE_API_KEY",
@@ -42,4 +43,10 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 const rtdb = getDatabase(app);
 
-export { db, auth, googleProvider, rtdb };
+// FCM only works in browser environments that support it
+const messagingPromise: Promise<ReturnType<typeof getMessaging> | null> =
+  typeof window !== 'undefined'
+    ? isSupported().then((supported) => supported ? getMessaging(app) : null)
+    : Promise.resolve(null);
+
+export { db, auth, googleProvider, rtdb, messagingPromise };
